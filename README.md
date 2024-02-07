@@ -18,13 +18,14 @@ class MyLang e where
   let_ :: e a -> (e a -> e b) -> e b 
 ```
 
-However, since its expression type (constructor) in Haskell is parameterized by its guest type, it is unclear how can implement semantics that refers to environments (technically, semantics those that are defined for terms-in-context instead of closed terms).
-Examples of such semantics include incremental computations, bidirectional transformations, and automatic differentiations.
+However, since the expression type operator (`e`) is parameterized only by its guest type, it is unclear how we can implement semantics that refers to environments (technically, semantics that are defined for terms-in-context instead of closed terms). 
+Examples of such semantics include incremental computations, bidirectional transformations, and automatic differentiation.
 
-This library provides operators that address this gap, based on [Atkey 09's unembedding](https://doi.org/10.1007/978-3-642-02273-9_5)---an provably correct isomorphism between de Bruijn-indexed terms and (parametric) higher-order abstract syntax.
+This library provides operators that address this gap, based on [Atkey 09's unembedding](https://doi.org/10.1007/978-3-642-02273-9_5)---a provably correct isomorphism between de Bruijn-indexed terms and (parametric) higher-order abstract syntax.
 
 ```haskell
--- Assuming Sem is a semantic domain 
+data Sem as a = ... -- semantic domain 
+
 addSem :: Sem env Int -> Sem env Int -> Sem env Int 
 letSem :: Sem env a -> Sem (a : env) b -> Sem env b 
 
