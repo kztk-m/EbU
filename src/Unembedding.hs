@@ -22,6 +22,10 @@ module Unembedding
     LiftVariables(..), Variables (..),
 
     -- * Interpretation of open terms
+    --
+    -- | The @run***@ functions must be used with polymorphic arguments, like
+    --  @forall f. HOAS f => f a@ and @forall f. HOAS f => f a -> f b@, where @HOAS@ is
+    --  a user-defined finally-tagless HOAS interface. Otherwise, they may cause errors.
     TEnv, EnvI(..), runOpen, runOpenN, runClose,
     Nat(..), SNat(..), Vec(..), runOpenV, Repeat,
 
@@ -107,6 +111,15 @@ var2 = weaken var1
 -- variables rather than terms. The latter requires us to weaken variables that
 -- appear in the middle of an environment.
 class Variables (Var sem) => LiftVariables (sem :: [k] -> k -> Type) where
+  -- | Semantics of variables. Definitions like
+  -- @
+  -- newtype Var Sem env a = SemIx (Ix env a)
+  -- @
+  -- always works as 'Ix' is the free instance of Variables. Another typical implementation is
+  -- @
+  -- newtype Var Sem env a = IdentitySem (Sem env a)
+  -- @
+  -- which works when 'Sem' is an instance of 'Variables'.
   data Var sem (env :: [k]) (a :: k) :: Type
   liftVar :: Var sem env a -> sem env a
 
