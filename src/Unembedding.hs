@@ -238,7 +238,7 @@ liftFO2 f x y = liftFO (\(ECons xx (ECons yy _)) -> f xx yy) (ECons x (ECons y E
 -- and we need to accommodate for that
 -- the following are ways of describing those arguments:
 
--- describes arguments of second order constructs. Intended to appear at the type level
+-- | describes arguments of second order constructs. Intended to appear at the type level
 data Sig2 k = [k] :~> k
             -- args ~> res
             -- (:~> is just the constructor, basically its a construct that stores the list of args and the result)
@@ -339,6 +339,32 @@ toURep n f = UR (ofl2TEnv n) (fromFunc f)
 ofl2TEnv :: OfLength as -> TEnv as
 ofl2TEnv LZ     = ENil
 ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
+
+-- | Handy version of 'liftSO'. The type looks complicated but can be comprehensive
+-- when we apply it to specific @Dim ss@ values.
+--
+-- >>> :t liftSOn (ol0 :. ol0 :. End)
+-- >>> :t liftSOn (ol1 :. End)
+-- >>> :t liftSOn (ol0 :. ol2 :. End)
+-- liftSOn (ol0 :. ol0 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]). sem env a1 -> sem env a2 -> sem env r)
+--      -> EnvI sem a1 -> EnvI sem a2 -> EnvI sem r
+-- liftSOn (ol1 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]). sem (a1 : env) a2 -> sem env r)
+--      -> (EnvI sem a1 -> EnvI sem a2) -> EnvI sem r
+-- liftSOn (ol0 :. ol2 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {b :: k}
+--             {a3 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]).
+--       sem env a1 -> sem (a2 : b : env) a3 -> sem env r)
+--      -> EnvI sem a1
+--      -> (EnvI sem a2 -> EnvI sem b -> EnvI sem a3)
+--      -> EnvI sem r
 
 liftSOn :: forall sem ss r. LiftVariables sem => Dim ss
         -> (forall env. FuncTerm sem env ss r) -> FuncU sem ss r
