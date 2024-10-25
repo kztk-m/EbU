@@ -1,4 +1,4 @@
-{-
+{- |
 
 Contains unembedding framework to support using the Embedding by Unembedding technique.
 
@@ -14,25 +14,40 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# LANGUAGE FlexibleContexts       #-}
 
 module Unembedding
   (
-    TEnv, Variables (..), weakenMany,
-    var0, var1, var2,
+    -- * Interface Typeclass
+    LiftVariables(..), Variables (..),
 
-    EnvI(..), runOpen, runOpenN,
-
+    -- * Interpretation of open terms
+    --
+    -- | The @run***@ functions must be used with polymorphic arguments, like
+    --  @forall f. HOAS f => f a@ and @forall f. HOAS f => f a -> f b@, where @HOAS@ is
+    --  a user-defined finally-tagless HOAS interface. Otherwise, they may cause errors.
+    TEnv, EnvI(..), runOpen, runOpenN, runClose,
     Nat(..), SNat(..), Vec(..), runOpenV, Repeat,
 
+    -- * Lifting functions for first-order language constructs
     liftFO,
     liftFO0, liftFO1, liftFO2,
 
-    Sig2(..), TermRep(..), URep(..),
-    liftSO,
-
+    -- * Lifting functions for second-order language constructs
     OfLength(..), ol0, ol1, ol2, ol3, ol4,
     FuncTerm, FuncU, Dim(..),
     liftSOn,
+
+    -- * Internal datatypes and functions used in 'liftSOn'.
+    --
+    -- | They are supposed to be used typically when a construct is variadic.
+    Sig2(..), TermRep(..), URep(..),
+    liftSO,
+
+    -- * Internal Manipulation of Variables
+    weakenMany,
+    var0, var1, var2,
+
   ) where
 
 import           Data.Functor.Identity (Identity)
@@ -51,15 +66,20 @@ type REnv     = Env Maybe    -- Result of reverse computation.
 
 -- | Defines semantics that can be unembed: those that have an environment that can
 --   focus on a variable, and be weakened
-class Variables (sem :: [k] -> k -> Type) where
-  var    :: sem (a ': as) a
-  weaken :: sem as a -> sem (b ': as) a
+class Variables (semvar :: [k] -> k -> Type) where
+  var    :: semvar (a ': as) a
+  weaken :: semvar as a -> semvar (b ': as) a
+
+-- | Ix is a free Variables.
+instance Variables Ix where
+  var = IxZ
+  weaken = IxS
 
 -- | Generic weakening
 --   Compares two environments and repeatedly applies 'weaken' to unify them
 --   While it appears partial, it is guaranteed to work by the original unembedding work.
 -- weaken + compare
-weakenMany :: Variables sem => TEnv as -> TEnv as' -> sem as b -> sem as' b
+weakenMany :: Variables semvar => TEnv as -> TEnv as' -> semvar as b -> semvar as' b
 weakenMany e1 e2 = go lenDiff e1 e2
   where
     l1 = lenEnv e1
@@ -73,14 +93,35 @@ weakenMany e1 e2 = go lenDiff e1 e2
 -- Handy functions for getting the semantics to focus on a particular variable in its env
 -- Defined as a combo of 'var' and 'weaken'
 
-var0 :: Variables sem => sem (a : env) a
+var0 :: Variables semvar => semvar (a : env) a
 var0 = var
 
-var1 :: Variables sem => sem (b : a : s) a
+var1 :: Variables semvar => semvar (b : a : s) a
 var1 = weaken var0
 
-var2 :: Variables sem => sem (b2 : b1 : a : s) a
+var2 :: Variables semvar => semvar (b2 : b1 : a : s) a
 var2 = weaken var1
+
+-- | Typeclass to capture the ability to lift semantics of variables (values?)
+-- into semantics of terms.
+--
+-- [NOTE] This is a deviation from our ICFP 2023 paper. We find this is handy
+-- when we apply EbU for the original unembedding (i.e., conversion to de Bruijn
+-- terms); it is typically easy to provide a Variables instance for just
+-- variables rather than terms. The latter requires us to weaken variables that
+-- appear in the middle of an environment.
+class Variables (Var sem) => LiftVariables (sem :: [k] -> k -> Type) where
+  -- | Semantics of variables. Definitions like
+  -- @
+  -- newtype Var Sem env a = SemIx (Ix env a)
+  -- @
+  -- always works as 'Ix' is the free instance of Variables. Another typical implementation is
+  -- @
+  -- newtype Var Sem env a = IdentitySem (Sem env a)
+  -- @
+  -- which works when 'Sem' is an instance of 'Variables'.
+  data Var sem (env :: [k]) (a :: k) :: Type
+  liftVar :: Var sem env a -> sem env a
 
 -- Wrapper the quantifies over env so that our type can only have one param like the HOAS
 -- Called EnvI, short for EnvIndexed, as it is indexed by an environment
@@ -97,13 +138,13 @@ newtype EnvI sem a = EnvI { runEnvI :: forall as. TEnv as -> sem as a }
 --          runOpenILC :: (forall e. ILChaos e => e a -> e b) -> ILC '[a] b
 --          runOpenILC f = runOpen f
 --        to ensure no funny business goes on
-runOpen :: Variables sem => (EnvI sem a -> EnvI sem b) -> sem '[a] b
+runOpen :: LiftVariables sem => (EnvI sem a -> EnvI sem b) -> sem '[a] b
 runOpen f = let eA = ECons Proxy ENil
-                x  = EnvI $ \e' -> weakenMany eA e' var
+                x  = EnvI $ \e' -> liftVar $ weakenMany eA e' var
             in runEnvI (f x) eA
 
--- Same vibe as runOpen just with N free variables, represented as type env
-runOpenN :: Variables sem => TEnv as -> (Env (EnvI sem) as -> EnvI sem a) -> sem as a
+-- | Same vibe as runOpen just with N free variables, represented as type env
+runOpenN :: LiftVariables sem => TEnv as -> (Env (EnvI sem) as -> EnvI sem a) -> sem as a
 runOpenN e f =
   -- exactly the same as runOpen, we need to make the arg to f, apply it and unpack the result
   -- just this time our arg is an env of EnvI sem terms
@@ -111,11 +152,15 @@ runOpenN e f =
   in runEnvI (f xs) e -- apply f, unpack result
   where
     -- make env of terms using type env
-    mkXs :: Variables sem => TEnv as' -> Env (EnvI sem) as'
+    mkXs :: LiftVariables sem => TEnv as' -> Env (EnvI sem) as'
     mkXs ENil = ENil
     mkXs te@(ECons _ te') =
-      let x = EnvI $ \e' -> weakenMany te e' var -- each EnvI term is a var term with envs unified
+      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var -- each EnvI term is a var term with envs unified
       in ECons x (mkXs te')
+
+-- | A special case of 'runOpenN'
+runClose :: LiftVariables sem => EnvI sem a -> sem '[] a
+runClose e = runOpenN ENil (const e)
 
 -- Data type representing natural numbers in peano arithmetic pres, ready to be lifted to the type level
 data Nat = Z | S Nat
@@ -136,9 +181,9 @@ type family Repeat a n = m | m -> n where
   Repeat a 'Z     = '[]
   Repeat a ('S n) = a ': Repeat a n
 
--- runOpenN, but the arg gets passed in as a vec
+-- | runOpenN, but the arg gets passed in as a vec
 runOpenV :: forall sem n a b.
-            Variables sem => SNat n -> (Vec (EnvI sem a) n -> EnvI sem b) -> sem (Repeat a n) b
+            LiftVariables sem => SNat n -> (Vec (EnvI sem a) n -> EnvI sem b) -> sem (Repeat a n) b
 runOpenV sn f = runOpenN (mkEnv sn) (f . e2v sn)
   where
     mkEnv :: forall m. SNat m -> TEnv (Repeat a m)
@@ -193,7 +238,7 @@ liftFO2 f x y = liftFO (\(ECons xx (ECons yy _)) -> f xx yy) (ECons x (ECons y E
 -- and we need to accommodate for that
 -- the following are ways of describing those arguments:
 
--- describes arguments of second order constructs. Intended to appear at the type level
+-- | describes arguments of second order constructs. Intended to appear at the type level
 data Sig2 k = [k] :~> k
             -- args ~> res
             -- (:~> is just the constructor, basically its a construct that stores the list of args and the result)
@@ -215,7 +260,7 @@ data URep (sem :: [k] -> k -> Type) (s :: Sig2 k) where
 
 -- same format as liftFo, except now instead of just having envs of sem and EnvI sem,
 -- we need TermRep and URep
-liftSO :: forall sem ss r. Variables sem =>
+liftSO :: forall sem ss r. LiftVariables sem =>
   (forall env. Env (TermRep sem env) ss -> sem env r)
   -> Env (URep sem) ss -> EnvI sem r
 liftSO f ks = EnvI $ \e -> f (mapEnv (conv e) ks)
@@ -228,7 +273,7 @@ liftSO f ks = EnvI $ \e -> f (mapEnv (conv e) ks)
         mkXs :: TEnv env -> TEnv as' -> TEnv (Append as' env) -> Env (EnvI sem) as'
         mkXs _ ENil _ = ENil
         mkXs p (ECons _ as) te@(ECons _ te')
-          = let x = EnvI $ \e' -> weakenMany te e' var
+          = let x = EnvI $ \e' -> liftVar $ weakenMany te e' var
             in ECons x (mkXs p as te')
 
 -- Here down is the type families (leave in appendix)
@@ -295,7 +340,33 @@ ofl2TEnv :: OfLength as -> TEnv as
 ofl2TEnv LZ     = ENil
 ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
 
-liftSOn :: forall sem ss r. Variables sem => Dim ss
+-- | Handy version of 'liftSO'. The type looks complicated but can be comprehensive
+-- when we apply it to specific @Dim ss@ values.
+--
+-- >>> :t liftSOn (ol0 :. ol0 :. End)
+-- >>> :t liftSOn (ol1 :. End)
+-- >>> :t liftSOn (ol0 :. ol2 :. End)
+-- liftSOn (ol0 :. ol0 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]). sem env a1 -> sem env a2 -> sem env r)
+--      -> EnvI sem a1 -> EnvI sem a2 -> EnvI sem r
+-- liftSOn (ol1 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]). sem (a1 : env) a2 -> sem env r)
+--      -> (EnvI sem a1 -> EnvI sem a2) -> EnvI sem r
+-- liftSOn (ol0 :. ol2 :. End)
+--   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {b :: k}
+--             {a3 :: k} {r :: k}.
+--      LiftVariables sem =>
+--      (forall (env :: [k]).
+--       sem env a1 -> sem (a2 : b : env) a3 -> sem env r)
+--      -> EnvI sem a1
+--      -> (EnvI sem a2 -> EnvI sem b -> EnvI sem a3)
+--      -> EnvI sem r
+
+liftSOn :: forall sem ss r. LiftVariables sem => Dim ss
         -> (forall env. FuncTerm sem env ss r) -> FuncU sem ss r
 liftSOn ns f =
   let h :: forall env. Env (TermRep sem env) ss -> sem env r

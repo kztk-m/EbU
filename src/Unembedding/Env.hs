@@ -3,13 +3,15 @@
 Generic environment used by Embedding by Unembedding, and functions over it.
 
 -}
-{-# LANGUAGE DataKinds      #-}
-{-# LANGUAGE GADTs          #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds      #-}
-{-# LANGUAGE RankNTypes     #-}
-{-# LANGUAGE TypeFamilies   #-}
-{-# LANGUAGE TypeOperators  #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE TypeOperators      #-}
 module Unembedding.Env (
   Env(..), Ix(..), lookEnv, lenEnv, mapEnv,
   Append, appendEnv,
@@ -30,6 +32,9 @@ data Env (f :: k -> Type) (as :: [k]) where
 data Ix (as :: [k]) (a :: k) where
   IxZ :: Ix (a ': as) a             -- At element in question.
   IxS :: Ix as a -> Ix (b ': as) a  -- Element lies further into the env.
+
+deriving stock instance Show (Ix as a)
+
 
 -- | Looking up something in an env using Ix
 lookEnv :: Env f as -> Ix as a -> f a
@@ -61,10 +66,22 @@ appendEnv :: Env f as -> Env f bs -> Env f (Append as bs)
 appendEnv ENil ys         = ys
 appendEnv (ECons x xs) ys = ECons x (appendEnv xs ys)
 
-
+-- | @Func f [a1,...an] r = f a1 -> ... -> f an -> r@
 type family Func sem as r where
   Func sem '[] r       = r
   Func sem (a ': as) r = sem a -> Func sem as r
+
+-- | Converts n-ary functions to a unary function on `Env`.
+--
+-- >>> fromFunc (++) (ECons [1,2] (ECons [3,4] ENil))
+-- [1,2,3,4]
+-- >>> import Data.Functor.Identity
+-- >>> runIdentity $ fromFunc (\(Identity x) -> Identity $ 2^x) (ECons (Identity (4 :: Int)) ENil)
+-- 16
+-- >>> import Data.Functor.Identity
+-- >>> runIdentity $ fromFunc (\(Identity n) (Identity x) -> Identity $ replicate n x) (ECons (Identity 10) (ECons (Identity 'a') ENil))
+-- "aaaaaaaaaa"
+
 
 fromFunc :: Func sem as (sem r) -> Env sem as -> sem r
 fromFunc e ENil         = e
