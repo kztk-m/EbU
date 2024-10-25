@@ -22,7 +22,7 @@ module Unembedding
     LiftVariables(..), Variables (..),
 
     -- * Interpretation of open terms
-    TEnv, EnvI(..), runOpen, runOpenN,
+    TEnv, EnvI(..), runOpen, runOpenN, runClose,
     Nat(..), SNat(..), Vec(..), runOpenV, Repeat,
 
     -- * Lifting functions for first-order language constructs
@@ -65,6 +65,11 @@ type REnv     = Env Maybe    -- Result of reverse computation.
 class Variables (semvar :: [k] -> k -> Type) where
   var    :: semvar (a ': as) a
   weaken :: semvar as a -> semvar (b ': as) a
+
+-- | Ix is a free Variables.
+instance Variables Ix where
+  var = IxZ
+  weaken = IxS
 
 -- | Generic weakening
 --   Compares two environments and repeatedly applies 'weaken' to unify them
@@ -139,6 +144,10 @@ runOpenN e f =
     mkXs te@(ECons _ te') =
       let x = EnvI $ \e' -> liftVar $ weakenMany te e' var -- each EnvI term is a var term with envs unified
       in ECons x (mkXs te')
+
+-- | A special case of 'runOpenN'
+runClose :: LiftVariables sem => EnvI sem a -> sem '[] a
+runClose e = runOpenN ENil (const e)
 
 -- Data type representing natural numbers in peano arithmetic pres, ready to be lifted to the type level
 data Nat = Z | S Nat

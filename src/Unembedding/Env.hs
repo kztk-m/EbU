@@ -3,13 +3,15 @@
 Generic environment used by Embedding by Unembedding, and functions over it.
 
 -}
-{-# LANGUAGE DataKinds      #-}
-{-# LANGUAGE GADTs          #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds      #-}
-{-# LANGUAGE RankNTypes     #-}
-{-# LANGUAGE TypeFamilies   #-}
-{-# LANGUAGE TypeOperators  #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE TypeOperators      #-}
 module Unembedding.Env (
   Env(..), Ix(..), lookEnv, lenEnv, mapEnv,
   Append, appendEnv,
@@ -30,6 +32,9 @@ data Env (f :: k -> Type) (as :: [k]) where
 data Ix (as :: [k]) (a :: k) where
   IxZ :: Ix (a ': as) a             -- At element in question.
   IxS :: Ix as a -> Ix (b ': as) a  -- Element lies further into the env.
+
+deriving stock instance Show (Ix as a)
+
 
 -- | Looking up something in an env using Ix
 lookEnv :: Env f as -> Ix as a -> f a
