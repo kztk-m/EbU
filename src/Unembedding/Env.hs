@@ -3,15 +3,15 @@
 Generic environment used by Embedding by Unembedding, and functions over it.
 
 -}
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE PolyKinds          #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeFamilies       #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Unembedding.Env (
   Env(..), Ix(..), lookEnv, lenEnv, mapEnv,
   Append, appendEnv,
@@ -83,6 +83,6 @@ type family Func sem as r where
 -- "aaaaaaaaaa"
 
 
-fromFunc :: Func sem as (sem r) -> Env sem as -> sem r
+fromFunc :: Func sem as r -> Env sem as -> r
 fromFunc e ENil         = e
 fromFunc e (ECons a as) = fromFunc (e a) as

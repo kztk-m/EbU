@@ -4,17 +4,19 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 
 -}
 
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Unembedding
   (
@@ -38,11 +40,23 @@ module Unembedding
     FuncTerm, FuncU, Dim(..),
     liftSOn,
 
-    -- * Internal datatypes and functions used in 'liftSOn'.
+    -- ** Internal datatypes and functions used in 'liftSOn'.
     --
     -- | They are supposed to be used typically when a construct is variadic.
+
     Sig2(..), TermRep(..), URep(..),
     liftSO,
+
+    -- * Lifting functions for languages with multiple semantic domains (experimental)
+    liftFO', liftFO0', liftFO1', liftFO2',
+    FuncSem', FuncH', Dim'(..), liftSOn',
+
+    -- ** Interpretation functions
+    runOpen', runOpenN', runClose',
+
+    -- ** Internal datatypes underlying 'liftSOn''
+
+    SemSig(..), SemRep'(..), HRep'(..), liftSO',
 
     -- * Internal Manipulation of Variables
     weakenMany,
@@ -123,6 +137,13 @@ class Variables (Var sem) => LiftVariables (sem :: [k] -> k -> Type) where
   data Var sem (env :: [k]) (a :: k) :: Type
   liftVar :: Var sem env a -> sem env a
 
+instance LiftVariables Ix where
+  newtype Var Ix env a = VarIx (Ix env a)
+    deriving newtype Variables
+
+  liftVar (VarIx x) = x
+
+
 -- Wrapper the quantifies over env so that our type can only have one param like the HOAS
 -- Called EnvI, short for EnvIndexed, as it is indexed by an environment
 newtype EnvI sem a = EnvI { runEnvI :: forall as. TEnv as -> sem as a }
@@ -139,24 +160,11 @@ newtype EnvI sem a = EnvI { runEnvI :: forall as. TEnv as -> sem as a }
 --          runOpenILC f = runOpen f
 --        to ensure no funny business goes on
 runOpen :: LiftVariables sem => (EnvI sem a -> EnvI sem b) -> sem '[a] b
-runOpen f = let eA = ECons Proxy ENil
-                x  = EnvI $ \e' -> liftVar $ weakenMany eA e' var
-            in runEnvI (f x) eA
+runOpen = runOpen'
 
 -- | Same vibe as runOpen just with N free variables, represented as type env
 runOpenN :: LiftVariables sem => TEnv as -> (Env (EnvI sem) as -> EnvI sem a) -> sem as a
-runOpenN e f =
-  -- exactly the same as runOpen, we need to make the arg to f, apply it and unpack the result
-  -- just this time our arg is an env of EnvI sem terms
-  let xs = mkXs e -- make arg
-  in runEnvI (f xs) e -- apply f, unpack result
-  where
-    -- make env of terms using type env
-    mkXs :: LiftVariables sem => TEnv as' -> Env (EnvI sem) as'
-    mkXs ENil = ENil
-    mkXs te@(ECons _ te') =
-      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var -- each EnvI term is a var term with envs unified
-      in ECons x (mkXs te')
+runOpenN = runOpenN'
 
 -- | A special case of 'runOpenN'
 runClose :: LiftVariables sem => EnvI sem a -> sem '[] a
@@ -373,3 +381,174 @@ liftSOn ns f =
       h = fromFuncTerm f
   in toFuncU ns (liftSO @sem h)
 
+{-
+Multi-sorted I/F for supporting languages with more than one syntactic category.
+
+This connect
+
+   sem1 (as1 ++ env) a1 -> sem2 (as2 ++ env) a2 -> ... -> semn (asn ++ env) an -> sem env a
+
+with
+
+   (Env exp as1 -> h1 a1) -> (Env exp as2 -> h2 a2) -> ... -> (Env exp asn -> hn an) -> hn a
+
+Notice the use of exp in HOAS representations.
+
+-}
+
+data SemSig k = forall k'. MkSemSig ([k] -> k' -> Type) [k] k'
+
+data SemRep' (env :: [k]) (semsig :: SemSig k) where
+  SemR' :: sem (Append as env) b -> SemRep' env (MkSemSig sem as b)
+
+data HRep' (semExp :: [k] -> k -> Type) (s :: SemSig k) where
+  HR' :: TEnv as -> (Env (EnvI semExp) as -> EnvI sem b) -> HRep' semExp (MkSemSig sem as b)
+
+
+liftSO' :: forall semExp sem ss r. LiftVariables semExp =>
+  (forall env. Env (SemRep' env) ss -> sem env r)
+  -> Env (HRep' semExp) ss -> EnvI sem r
+liftSO' f ks = EnvI $ \shEnv -> f (mapEnv (conv shEnv) ks)
+  where
+    conv :: TEnv env -> HRep' semExp x -> SemRep' env x
+    conv shEnv (HR' shAs k) = SemR' $ cnv shEnv shAs k
+
+    cnv :: TEnv env -> TEnv as -> (Env (EnvI semExp) as -> EnvI sem1 b)
+           -> sem1 (Append as env) b
+    cnv shEnv shAs k =
+      let shAsEnv = appendEnv shAs shEnv
+          xs = mkXs shEnv shAs shAsEnv
+      in runEnvI (k xs) shAsEnv
+
+    mkXs :: proxy env -> TEnv as -> TEnv (Append as env) -> Env (EnvI semExp) as
+    mkXs _ ENil _ = ENil
+    mkXs p (ECons _ shAs) te@(ECons _ te') =
+      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var
+      in ECons x (mkXs p shAs te')
+
+
+toHRep' :: OfLength as -> Func (EnvI semExp) as (EnvI sem r) -> HRep' semExp (MkSemSig sem as r)
+toHRep' n f = HR' (ofl2TEnv n) (fromFunc f)
+
+
+-- -- Corresponds to Env (HRep' semExp) ss -> EnvI semR r
+type family FuncH' (semExp :: [k] -> k -> Type) (semR :: [k] -> kR -> Type) (ss :: [SemSig k])
+                   (r :: kR) = res | res -> semR r k where
+  FuncH' semExp semR '[] r = EnvI semR r
+  FuncH' semExp semR (MkSemSig sem as a ': ss) r =
+    Func (EnvI semExp) as (EnvI sem a)
+    -> FuncH' semExp semR ss r
+
+toFuncH' :: Dim' ss -> (Env (HRep' semExp) ss -> EnvI semR r) -> FuncH' semExp semR ss r
+toFuncH' End' f       = f ENil
+toFuncH' (n ::. ns) f = \k -> toFuncH' ns (f . ECons (toHRep' n k))
+
+data Dim' (ss :: [SemSig k]) where
+  End'  :: Dim' '[]
+  (::.) :: OfLength as -> Dim' ss -> Dim' (MkSemSig sem as a ': ss)
+
+infixr 4 ::.
+
+
+-- Corresponds to (forall env. Env (SemRep' env) ss -> semR env r)
+type family FuncSem' (semR :: [k] -> kR -> Type) (env :: [k])
+                     (ss :: [SemSig k]) (r :: kR) | r -> semR env r where
+  FuncSem' semR env '[] r = semR env r
+  FuncSem' semR env (MkSemSig sem as a ': ss) r = sem (Append as env) a -> FuncSem' semR env ss r
+
+fromFuncSem' :: FuncSem' semR env ss r -> Env (SemRep' env) ss -> semR env r
+fromFuncSem' f ENil                 = f
+fromFuncSem' f (ECons (SemR' x) xs) = fromFuncSem' (f x) xs
+
+
+liftSOn' ::
+  forall semExp semR ss r proxy.
+  LiftVariables semExp =>
+  Dim' ss
+  -> proxy semExp
+  -> (forall env. FuncSem' semR env ss r)
+  -> FuncH' semExp semR ss r
+liftSOn' ns _ f =
+  let h :: forall env. Env (SemRep' env) ss -> semR env r
+      h = fromFuncSem' f
+  in toFuncH' ns (liftSO' @semExp h)
+
+
+
+-- >>> :t liftSOn' End' (Proxy @Ix)
+-- liftSOn' End' (Proxy @Ix)
+--   :: forall {k} {kR} {semR :: [k] -> kR -> *} {r :: kR}.
+--      (forall (env :: [k]). semR env r) -> EnvI semR r
+
+
+
+-- >>> :t liftSOn' (ol0 ::. ol0 ::. End')
+-- >>> :t liftSOn' (ol1 ::. End')
+-- liftSOn' (ol0 ::. ol0 ::. End')
+--   :: forall {k} {kR} {k'1} {k'2} {semExp :: [k] -> k -> *}
+--             {proxy :: ([k] -> k -> *) -> *} {semR :: [k] -> kR -> *}
+--             {sem1 :: [k] -> k'1 -> *} {a1 :: k'1} {sem2 :: [k] -> k'2 -> *}
+--             {a2 :: k'2} {r :: kR}.
+--      LiftVariables semExp =>
+--      proxy semExp
+--      -> (forall (env :: [k]). sem1 env a1 -> sem2 env a2 -> semR env r)
+--      -> EnvI sem1 a1
+--      -> EnvI sem2 a2
+--      -> EnvI semR r
+-- liftSOn' (ol1 ::. End')
+--   :: forall {k} {kR} {k'} {semExp :: [k] -> k -> *}
+--             {proxy :: ([k] -> k -> *) -> *} {semR :: [k] -> kR -> *}
+--             {sem :: [k] -> k' -> *} {a1 :: k} {a2 :: k'} {r :: kR}.
+--      LiftVariables semExp =>
+--      proxy semExp
+--      -> (forall (env :: [k]). sem (a1 : env) a2 -> semR env r)
+--      -> (EnvI semExp a1 -> EnvI sem a2)
+--      -> EnvI semR r
+
+
+data SemSigFO k = forall k'. MkSemSigFO ([k] -> k' -> Type) k'
+
+
+data SemRepFO (env :: [k]) (semsig :: SemSigFO k) where
+  SemRFO :: sem env b -> SemRepFO env (MkSemSigFO sem b)
+
+data HRepFO (s :: SemSigFO k) where
+  HRFO :: EnvI sem b -> HRepFO (MkSemSigFO sem b)
+
+
+liftFO' :: (forall env. Env (SemRepFO env) ss -> sem env a)
+       -> Env HRepFO ss
+       -> EnvI sem a
+liftFO' f xs = EnvI $ \e -> f (mapEnv (\(HRFO (EnvI t)) -> SemRFO (t e)) xs)
+
+liftFO0' :: (forall env. sem env a) -> EnvI sem a
+liftFO0' = liftFO0
+
+liftFO1' :: (forall env. sem1 env a -> sem2 env b) -> EnvI sem1 a -> EnvI sem2 b
+liftFO1' f e = liftFO' (\(ECons (SemRFO x) _) -> f x)  (ECons (HRFO e) ENil)
+
+liftFO2' :: (forall env. sem1 env a -> sem2 env b -> sem3 env c) -> EnvI sem1 a -> EnvI sem2 b -> EnvI sem3 c
+liftFO2' f e1 e2 = liftFO' (\(ECons (SemRFO x) (ECons (SemRFO y) _)) -> f x y) (ECons (HRFO e1) (ECons (HRFO e2) ENil))
+
+
+runOpen' :: LiftVariables semE => (EnvI semE a -> EnvI sem b) -> sem '[a] b
+runOpen' f = runOpenN' (ECons Proxy ENil) (\(ECons x _) -> f x)
+
+-- | Same vibe as 'runOpen'' just with N free variables, represented as type env
+runOpenN' :: LiftVariables semE => TEnv as -> (Env (EnvI semE) as -> EnvI sem a) -> sem as a
+runOpenN' e f =
+  -- exactly the same as runOpen, we need to make the arg to f, apply it and unpack the result
+  -- just this time our arg is an env of EnvI sem terms
+  let xs = mkXs e -- make arg
+  in runEnvI (f xs) e -- apply f, unpack result
+  where
+    -- make env of terms using type env
+    mkXs :: LiftVariables sem => TEnv as' -> Env (EnvI sem) as'
+    mkXs ENil = ENil
+    mkXs te@(ECons _ te') =
+      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var -- each EnvI term is a var term with envs unified
+      in ECons x (mkXs te')
+
+-- | A special case of 'runOpenN''
+runClose' :: EnvI sem a -> sem '[] a
+runClose' e = runEnvI e ENil
