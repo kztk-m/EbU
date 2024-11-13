@@ -15,29 +15,29 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        ghc: ['8.8.4', '8.10.7', '9.0.2', '9.2.8', '9.4.8', '9.6.6']
+        ghc: ['8.8', '8.10', '9.0', '9.2', '9.4', '9.6']
         cabal: ['3.2']
         os: ['ubuntu-latest']
     
     name: build on (${{ matrix.ghc }}/${{ matrix.cabal }})
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-haskell@v1
+    - uses: actions/setup-haskell@v2
       with:
         ghc-version: ${{ matrix.ghc }}
         cabal-version: ${{ matrix.cabal }}
 
-    - name: Cache
-      uses: actions/cache@v3
-      env:
-        cache-name: cache-cabal
-      with:
-        path: ~/.cabal
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
-        restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
+#    - name: Cache
+#      uses: actions/cache@v3
+#      env:
+#        cache-name: cache-cabal
+#      with:
+#        path: ~/.cabal
+#        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+#        restore-keys: |
+#          ${{ runner.os }}-build-${{ env.cache-name }}-
+#          ${{ runner.os }}-build-
+#          ${{ runner.os }}-
 
     - name: Install dependencies
       run: |
