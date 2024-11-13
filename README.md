@@ -1,7 +1,7 @@
 Embedding by Unembedding
 ========================
 
-This is a proof-of-concept implementation of the idea presented in the paper: Kazutaka Matsuda, Samantha Frohlich, Meng Wang, and Nicolas Wu. 2023. Embedding by Unembedding. Proc. ACM Program. Lang. 7, ICFP, Article 189 (August 2023), 47 pages. <https://doi.org/10.1145/3607830>.
+This is a proof-of-concept implementation of [Embedding by Unembedding][EbU].
 
 Some examples can be found in <https://github.com/kztk-m/EbU-examples>.
 
@@ -34,3 +34,10 @@ instance MyLang (EnvI Sem) where
   add = liftFO2 addSem -- or liftSO (ol0 :. ol0 :. End) addSem 
   let_ = liftSO (ol0 :. ol1 :. End) letSem
 ```
+
+References
+----------
+
+* Kazutaka Matsuda, Samantha Frohlich, Meng Wang, and Nicolas Wu. 2023. [Embedding by Unembedding][EbU]. Proc. ACM Program. Lang. 7, ICFP, Article 189 (August 2023), 47 pages. 
+
+[EBU]: https://doi.org/10.1145/3607830
