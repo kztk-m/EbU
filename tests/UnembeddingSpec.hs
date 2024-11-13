@@ -1,16 +1,14 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
 module UnembeddingSpec (spec) where
 
 import           Data.Proxy      (Proxy (..))
@@ -59,10 +57,8 @@ class HSTLC f => HSTLCS f s | s -> f where
   let_ :: s a -> (f a -> s b) -> s b
   put  :: String -> s ()
 
-instance LiftVariables STLC where
-  newtype Var STLC env a = VarIx (Ix env a)
-    deriving newtype Variables
-  liftVar (VarIx ix) = Var ix
+instance LiftVariables Ix STLC where
+  liftVar = Var
 
 instance HSTLC (EnvI STLC) where
   lam = liftSOn (ol1 :. End) Lam
