@@ -118,12 +118,15 @@ var2 = weaken var1
 -- terms); it is typically easy to provide a Variables instance for just
 -- variables rather than terms. The latter requires us to weaken variables that
 -- appear in the middle of an environment.
-class Variables semVar => LiftVariables semVar (sem :: [k] -> k -> Type) | sem -> semVar where
-  liftVar :: semVar env a -> sem env a
+class Variables (Var sem) => LiftVariables (sem :: [k] -> k -> Type) where
+  type family Var sem :: [k] -> k -> Type
+  type Var sem = sem
 
-instance LiftVariables Ix Ix where
+  liftVar :: Var sem env a -> sem env a
+  default liftVar :: (Var sem ~ sem) => Var sem env a -> sem env a
   liftVar = id
 
+instance LiftVariables Ix where
 
 -- Wrapper the quantifies over env so that our type can only have one param like the HOAS
 -- Called EnvI, short for EnvIndexed, as it is indexed by an environment
@@ -140,11 +143,11 @@ newtype EnvI sem a = EnvI { runEnvI :: forall as. TEnv as -> sem as a }
 --          runOpenILC :: (forall e. ILChaos e => e a -> e b) -> ILC '[a] b
 --          runOpenILC f = runOpen f
 --        to ensure no funny business goes on
-runOpen :: LiftVariables semVar sem => (EnvI sem a -> EnvI sem b) -> sem '[a] b
+runOpen :: LiftVariables sem => (EnvI sem a -> EnvI sem b) -> sem '[a] b
 runOpen = runOpen'
 
 -- | Same vibe as runOpen just with N free variables, represented as type env
-runOpenN :: LiftVariables semVar sem => TEnv as -> (Env (EnvI sem) as -> EnvI sem a) -> sem as a
+runOpenN :: LiftVariables sem => TEnv as -> (Env (EnvI sem) as -> EnvI sem a) -> sem as a
 runOpenN = runOpenN'
 
 -- | A special case of 'runOpenN'
@@ -171,8 +174,8 @@ type family Repeat a n = m | m -> n where
   Repeat a ('S n) = a ': Repeat a n
 
 -- | runOpenN, but the arg gets passed in as a vec
-runOpenV :: forall sem semVar n a b.
-            LiftVariables semVar sem => SNat n -> (Vec (EnvI sem a) n -> EnvI sem b) -> sem (Repeat a n) b
+runOpenV :: forall sem n a b.
+            LiftVariables sem => SNat n -> (Vec (EnvI sem a) n -> EnvI sem b) -> sem (Repeat a n) b
 runOpenV sn f = runOpenN (mkEnv sn) (f . e2v sn)
   where
     mkEnv :: forall m. SNat m -> TEnv (Repeat a m)
@@ -249,7 +252,7 @@ data URep (sem :: [k] -> k -> Type) (s :: Sig2 k) where
 
 -- same format as liftFo, except now instead of just having envs of sem and EnvI sem,
 -- we need TermRep and URep
-liftSO :: forall sem semVar ss r. LiftVariables semVar sem =>
+liftSO :: forall sem ss r. LiftVariables sem =>
   (forall env. Env (TermRep sem env) ss -> sem env r)
   -> Env (URep sem) ss -> EnvI sem r
 liftSO f ks = EnvI $ \e -> f (mapEnv (conv e) ks)
@@ -355,7 +358,7 @@ ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
 --      -> (EnvI sem a2 -> EnvI sem b -> EnvI sem a3)
 --      -> EnvI sem r
 
-liftSOn :: forall sem semVar ss r. LiftVariables semVar sem => Dim ss
+liftSOn :: forall sem ss r. LiftVariables sem => Dim ss
         -> (forall env. FuncTerm sem env ss r) -> FuncU sem ss r
 liftSOn ns f =
   let h :: forall env. Env (TermRep sem env) ss -> sem env r
@@ -385,8 +388,7 @@ data SemRep' (env :: [k]) (semsig :: SemSig k) where
 data HRep' (semExp :: [k] -> k -> Type) (s :: SemSig k) where
   HR' :: TEnv as -> (Env (EnvI semExp) as -> EnvI sem b) -> HRep' semExp (MkSemSig sem as b)
 
-
-liftSO' :: forall semExp semVar sem ss r. LiftVariables semVar semExp =>
+liftSO' :: forall semExp sem ss r. LiftVariables semExp =>
   (forall env. Env (SemRep' env) ss -> sem env r)
   -> Env (HRep' semExp) ss -> EnvI sem r
 liftSO' f ks = EnvI $ \shEnv -> f (mapEnv (conv shEnv) ks)
@@ -443,8 +445,8 @@ fromFuncSem' f (ECons (SemR' x) xs) = fromFuncSem' (f x) xs
 
 
 liftSOn' ::
-  forall semExp semVar semR ss r proxy.
-  LiftVariables semVar semExp =>
+  forall semExp semR ss r proxy.
+  LiftVariables semExp =>
   Dim' ss
   -> proxy semExp
   -> (forall env. FuncSem' semR env ss r)
@@ -513,11 +515,11 @@ liftFO2' :: (forall env. sem1 env a -> sem2 env b -> sem3 env c) -> EnvI sem1 a 
 liftFO2' f e1 e2 = liftFO' (\(ECons (SemRFO x) (ECons (SemRFO y) _)) -> f x y) (ECons (HRFO e1) (ECons (HRFO e2) ENil))
 
 
-runOpen' :: LiftVariables semV semE => (EnvI semE a -> EnvI sem b) -> sem '[a] b
+runOpen' :: LiftVariables semE => (EnvI semE a -> EnvI sem b) -> sem '[a] b
 runOpen' f = runOpenN' (ECons Proxy ENil) (\(ECons x _) -> f x)
 
 -- | Same vibe as 'runOpen'' just with N free variables, represented as type env
-runOpenN' :: LiftVariables semV semE => TEnv as -> (Env (EnvI semE) as -> EnvI sem a) -> sem as a
+runOpenN' :: LiftVariables semE => TEnv as -> (Env (EnvI semE) as -> EnvI sem a) -> sem as a
 runOpenN' e f =
   -- exactly the same as runOpen, we need to make the arg to f, apply it and unpack the result
   -- just this time our arg is an env of EnvI sem terms
@@ -525,7 +527,7 @@ runOpenN' e f =
   in runEnvI (f xs) e -- apply f, unpack result
   where
     -- make env of terms using type env
-    mkXs :: LiftVariables semV sem => TEnv as' -> Env (EnvI sem) as'
+    mkXs :: LiftVariables sem => TEnv as' -> Env (EnvI sem) as'
     mkXs ENil = ENil
     mkXs te@(ECons _ te') =
       let x = EnvI $ \e' -> liftVar $ weakenMany te e' var -- each EnvI term is a var term with envs unified

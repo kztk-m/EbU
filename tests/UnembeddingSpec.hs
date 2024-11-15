@@ -57,7 +57,8 @@ class HSTLC f => HSTLCS f s | s -> f where
   let_ :: s a -> (f a -> s b) -> s b
   put  :: String -> s ()
 
-instance LiftVariables Ix STLC where
+instance LiftVariables STLC where
+  type Var STLC = Ix 
   liftVar = Var
 
 instance HSTLC (EnvI STLC) where
