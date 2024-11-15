@@ -13,7 +13,7 @@ Generic environment used by Embedding by Unembedding, and functions over it.
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Unembedding.Env (
-  Env(..), Ix(..), lookEnv, lenEnv, mapEnv,
+  Env(..), Ix(..), lookEnv, lenEnv, mapEnv, mapEnvWithIx, fromIndexer,
   Append, appendEnv,
 
   Func, fromFunc,
@@ -56,6 +56,14 @@ lenEnv (ECons _ as) = 1 + lenEnv as
 mapEnv :: (forall x. f x -> g x) -> Env f as -> Env g as
 mapEnv _ ENil         = ENil
 mapEnv f (ECons x xs) = ECons (f x) (mapEnv f xs)
+
+-- | A variant of 'mapEnv' with index.
+mapEnvWithIx :: (forall x. Ix as x -> f x -> g x) -> Env f as -> Env g as
+mapEnvWithIx _ ENil         = ENil
+mapEnvWithIx f (ECons x xs) = ECons (f IxZ x) (mapEnvWithIx (f . IxS) xs)
+
+fromIndexer :: (forall x. Ix as x -> f x) -> Env proxy as -> Env f as
+fromIndexer f = mapEnvWithIx (const . f)
 
 -- | Append for type level lists
 type family Append as bs where
