@@ -8,7 +8,6 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
