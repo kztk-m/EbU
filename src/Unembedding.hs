@@ -5,6 +5,7 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 -}
 
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -33,6 +34,7 @@ module Unembedding
     -- * Lifting functions for first-order language constructs
     liftFO,
     liftFO0, liftFO1, liftFO2,
+    liftFOF,
 
     -- * Lifting functions for second-order language constructs
     OfLength(..), ol0, ol1, ol2, ol3, ol4,
@@ -48,6 +50,7 @@ module Unembedding
 
     -- * Lifting functions for languages with multiple semantic domains (experimental)
     liftFO', liftFO0', liftFO1', liftFO2',
+    liftFOF',
     FuncSem', FuncH', Dim'(..), liftSOn',
 
     -- ** Interpretation functions
@@ -56,6 +59,7 @@ module Unembedding
     -- ** Internal datatypes underlying 'liftSOn''
 
     SemSig(..), SemRep'(..), HRep'(..), liftSO',
+    liftSOF',
 
     -- * Internal Manipulation of Variables
     weakenMany,
@@ -226,6 +230,9 @@ liftFO1 f x = liftFO (\(ECons xx _) -> f xx) (ECons x ENil)
 liftFO2 :: (forall env. sem env a -> sem env b -> sem env c) -> EnvI sem a -> EnvI sem b -> EnvI sem c
 liftFO2 f x y = liftFO (\(ECons xx (ECons yy _)) -> f xx yy) (ECons x (ECons y ENil))
 
+liftFOF :: (forall env. (forall a. key a -> sem env a) -> sem env r) -> (forall a. key a -> EnvI sem a) -> EnvI sem r
+liftFOF f a = EnvI $ \sh -> f (\key -> runEnvI (a key) sh)
+
 -- when it comes to second order constructors, now the arguments can have arguments
 -- and we need to accommodate for that
 -- the following are ways of describing those arguments:
@@ -257,16 +264,7 @@ liftSO :: forall sem ss r. LiftVariables sem =>
   -> Env (URep sem) ss -> EnvI sem r
 liftSO f ks = EnvI $ \e -> f (mapEnv (conv e) ks)
   where conv :: TEnv env -> URep sem s -> TermRep sem env s
-        conv e (UR e1 k) = TR $ cnv e e1 k
-        cnv :: TEnv env -> TEnv as -> (Env (EnvI sem) as -> EnvI sem a)
-            -> sem (Append as env) a
-        cnv e e1 k = let {ex_e = appendEnv e1 e; xs   = mkXs e e1 ex_e}
-                     in runEnvI (k xs) ex_e
-        mkXs :: TEnv env -> TEnv as' -> TEnv (Append as' env) -> Env (EnvI sem) as'
-        mkXs _ ENil _ = ENil
-        mkXs p (ECons _ as) te@(ECons _ te')
-          = let x = EnvI $ \e' -> liftVar $ weakenMany te e' var
-            in ECons x (mkXs p as te')
+        conv e (UR e1 k) = TR $ convertConstructArg e e1 k
 
 -- Here down is the type families (leave in appendix)
 
@@ -382,33 +380,41 @@ Notice the use of exp in HOAS representations.
 
 data SemSig k = forall k'. MkSemSig ([k] -> k' -> Type) [k] k'
 
+-- "semantic domain" representation.
 data SemRep' (env :: [k]) (semsig :: SemSig k) where
   SemR' :: sem (Append as env) b -> SemRep' env (MkSemSig sem as b)
 
+-- HOAS representation.
 data HRep' (semExp :: [k] -> k -> Type) (s :: SemSig k) where
   HR' :: TEnv as -> (Env (EnvI semExp) as -> EnvI sem b) -> HRep' semExp (MkSemSig sem as b)
 
+convertConstructArg :: LiftVariables semExp => TEnv env -> TEnv as -> (Env (EnvI semExp) as -> EnvI sem b) -> sem (Append as env) b
+convertConstructArg shEnv shAs k =
+  let shAsEnv = appendEnv shAs shEnv        -- TEnv (as ++ env)
+      xs = makeVariables shEnv shAs shAsEnv -- Env (EnvI semExp) as
+  in runEnvI (k xs) shAsEnv
+
+makeVariables :: LiftVariables semExp => proxy env -> TEnv as -> TEnv (Append as env) -> Env (EnvI semExp) as
+makeVariables _ ENil _ = ENil
+makeVariables p (ECons _ shAs) te@(ECons _ te') =
+      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var
+      in ECons x (makeVariables p shAs te')
+
+convertHRep'toSemRep' :: LiftVariables semE => TEnv env -> HRep' semE x -> SemRep' env x
+convertHRep'toSemRep' shEnv (HR' shAs k) = SemR' $ convertConstructArg shEnv shAs k
+
+-- | Core function to lift second-order constructs, supporting multiple semantic domains.
 liftSO' :: forall semExp sem ss r. LiftVariables semExp =>
   (forall env. Env (SemRep' env) ss -> sem env r)
   -> Env (HRep' semExp) ss -> EnvI sem r
-liftSO' f ks = EnvI $ \shEnv -> f (mapEnv (conv shEnv) ks)
-  where
-    conv :: TEnv env -> HRep' semExp x -> SemRep' env x
-    conv shEnv (HR' shAs k) = SemR' $ cnv shEnv shAs k
+liftSO' f ks = EnvI $ \shEnv -> f (mapEnv (convertHRep'toSemRep' shEnv) ks)
 
-    cnv :: TEnv env -> TEnv as -> (Env (EnvI semExp) as -> EnvI sem1 b)
-           -> sem1 (Append as env) b
-    cnv shEnv shAs k =
-      let shAsEnv = appendEnv shAs shEnv
-          xs = mkXs shEnv shAs shAsEnv
-      in runEnvI (k xs) shAsEnv
-
-    mkXs :: proxy env -> TEnv as -> TEnv (Append as env) -> Env (EnvI semExp) as
-    mkXs _ ENil _ = ENil
-    mkXs p (ECons _ shAs) te@(ECons _ te') =
-      let x = EnvI $ \e' -> liftVar $ weakenMany te e' var
-      in ECons x (mkXs p shAs te')
-
+-- | A general form of 'liftSO'' where constructs to be lifted allowed to have
+-- infinitely many arguments. 'liftSO'' is a special case where `h = Ix ss`.
+liftSOF' :: forall semE sem h r. LiftVariables semE =>
+  (forall env. (forall semsig. h semsig -> SemRep' env semsig) -> sem env r)
+  -> (forall semsig. h semsig -> HRep' semE semsig) -> EnvI sem r
+liftSOF' f k = EnvI $ \shEnv -> f (convertHRep'toSemRep' shEnv . k)
 
 toHRep' :: OfLength as -> Func (EnvI semExp) as (EnvI sem r) -> HRep' semExp (MkSemSig sem as r)
 toHRep' n f = HR' (ofl2TEnv n) (fromFunc f)
@@ -514,6 +520,8 @@ liftFO1' f e = liftFO' (\(ECons (SemRFO x) _) -> f x)  (ECons (HRFO e) ENil)
 liftFO2' :: (forall env. sem1 env a -> sem2 env b -> sem3 env c) -> EnvI sem1 a -> EnvI sem2 b -> EnvI sem3 c
 liftFO2' f e1 e2 = liftFO' (\(ECons (SemRFO x) (ECons (SemRFO y) _)) -> f x y) (ECons (HRFO e1) (ECons (HRFO e2) ENil))
 
+liftFOF' :: (forall env. (forall sem a. key sem a -> sem env a) -> semR env r) -> (forall sem a. key sem a -> EnvI sem a) -> EnvI semR r
+liftFOF' f arg  = EnvI $ \sh -> f (\key -> runEnvI (arg key) sh)
 
 runOpen' :: LiftVariables semE => (EnvI semE a -> EnvI sem b) -> sem '[a] b
 runOpen' f = runOpenN' (ECons Proxy ENil) (\(ECons x _) -> f x)
