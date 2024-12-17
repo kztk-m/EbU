@@ -30,14 +30,15 @@ Lens code for paper
 module Unembedding.Examples.AppLens where
 
 -- base
-import           Data.Maybe  (fromMaybe)
-import           Data.Proxy  (Proxy (..))
-import           Prelude     hiding (LT)
+import           Data.Maybe      (fromMaybe)
+import           Data.Proxy      (Proxy (..))
+import           Prelude         hiding (LT)
 
 -- unembedding tooling
+import qualified Unembedding     as UE
+import           Unembedding     (Dim (..), EnvI (..), TEnv, Variables (..),
+                                  ol0)
 import           Unembedding.Env
-import           Unembedding (Dim (..), EnvI (..), TEnv, Variables (..), ol0)
-import qualified Unembedding as UE
 
 -- Step 1: Identity semantic domain
 -- -----------------------------------------------------------------------------
@@ -49,14 +50,16 @@ data Lens s v = L {get :: s -> v, put :: s -> v -> s}
 
 -- var instance
 
-instance Variables LensTerm where
-  var = LT $ \(ECons _ e) ->
-    L (\(ECons (Just a) _) -> a)           -- get
-      (\_ a -> ECons (Just a) (unitEnv e)) -- put
+instance UE.Weakenable LensTerm where
   weaken t = LT $ \(ECons _ e) ->
     let l = runLT t e
     in L (\(ECons _ env) -> get l env)               -- get
          (\(ECons b env) a -> ECons b (put l env a)) -- put
+
+instance Variables LensTerm where
+  var = LT $ \(ECons _ e) ->
+    L (\(ECons (Just a) _) -> a)           -- get
+      (\_ a -> ECons (Just a) (unitEnv e)) -- put
 
 -- Step 2: Prepare semantic functions for each construct
 -- -----------------------------------------------------------------------------

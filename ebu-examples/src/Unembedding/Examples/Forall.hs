@@ -19,6 +19,7 @@ construct corresponds to the left-to-right conversion.
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
@@ -34,11 +35,12 @@ module Unembedding.Examples.Forall where
 import           Data.Kind       (Type)
 import           Data.Proxy      (Proxy (Proxy))
 import qualified Unembedding     as UE
-import           Unembedding     (Dim (..), LiftVariables (..), Variables, ol0,
-                                  ol1)
+import           Unembedding     (Dim (..), LiftVariables (..), Variables,
+                                  Weakenable, ol0, ol1)
 import qualified Unembedding.Env as UE
 
 import           DeFun.Core      (App, type (@@), type (~>))
+import           Unembedding.Env (pattern (:.), pattern ENil)
 
 
 data T = O | T :~> T | Forall (T ~> T)
@@ -105,10 +107,10 @@ instance LiftVariables Ast where
 data P (f :: T ~> T) (r :: T) where
   MkP :: forall f a. Proxy a -> P f (f @@ a)
 instance L (UE.EnvI Ast) where
-  lam = UE.liftSOn (ol1 :. End) Lam
+  lam = UE.liftSOn (ol1 :. ENil) Lam
 
   app = UE.liftFO2 App
-  let_ = UE.liftSOn (ol0 :. ol1 :. End) Let
+  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) Let
 
   inst a p = UE.liftFO1 (flip Inst p) a
 
@@ -147,18 +149,20 @@ instSem e p = Sem $ \env ->
   case interp e env of
     SG h -> h p
 
+instance Weakenable Sem where
+  weaken e = Sem $ \(UE.ECons _ xs) -> interp e xs
+
 instance Variables Sem where
   var = Sem $ \(UE.ECons x _) -> x
 
-  weaken e = Sem $ \(UE.ECons _ xs) -> interp e xs
 
 instance LiftVariables Sem
 
 instance L (UE.EnvI Sem) where
- lam = UE.liftSOn (ol1 :. End) lamSem
+ lam = UE.liftSOn (ol1 :. ENil) lamSem
 
  app = UE.liftFO2 appSem
- let_ = UE.liftSOn (ol0 :. ol1 :. End) letSem
+ let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
 
  inst a p = UE.liftFO1 (flip instSem p) a
 

@@ -41,7 +41,8 @@ import qualified Unembedding            as UE
 import           Unembedding            (Dim (..), EnvI (..), LiftVariables,
                                          OfLength (..), Repeat, SNat (..),
                                          Sig2 (..), TEnv, TermRep (..),
-                                         URep (..), Variables (..), Vec (..))
+                                         URep (..), Variables (..), Vec (..),
+                                         Weakenable)
 import           Unembedding.Env
 
 type Err = Either String
@@ -121,9 +122,11 @@ newtype LensT as a = LT { unLensT :: Lens (VEnv as) a }
 splitLT :: forall as a b . LensT as a -> LensT as b -> LensT as (a, b)
 splitLT = coerce (splitL :: Lens (VEnv as) a -> Lens (VEnv as) b -> Lens (VEnv as) (a, b))
 
+
+instance Weakenable LensT where
+  weaken (LT l) = LT $ weakenLens l
 instance Variables LensT where
   var = LT varLens
-  weaken (LT l) = LT $ weakenLens l
 
 instance LiftVariables LensT where
 
@@ -307,7 +310,7 @@ unpairLensT' =
 unpairLensT :: LensT s (a, b) -> LensT (a ': b ': s) r -> LensT s r
 unpairLensT e1 e2 = shareViewLensT e1 (unpairLensT' e2)
 instance UnPair () (,) (EnvI LensT) where
-  unpair = UE.liftSOn (LZ :. LS (LS LZ) :. End) unpairLensT
+  unpair = UE.liftSOn (UE.ol0 :. UE.ol2 :. ENil) unpairLensT
 
 data Sums as where
   InHead :: a       -> Sums (a ': as)

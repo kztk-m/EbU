@@ -35,7 +35,8 @@ import qualified Data.Sequence         as S
 -- unembedding tooling
 import qualified Unembedding           as UE
 import           Unembedding           (Dim (..), EnvI (..), LiftVariables,
-                                        TEnv, Variables (..), ol0, ol1, runOpen)
+                                        TEnv, Variables (..), Weakenable, ol0,
+                                        ol1, runOpen)
 import           Unembedding.Env
 
 -- Unembedding recipe:
@@ -61,11 +62,13 @@ type VEnv = Env Identity
 
 -- the featuring of an env in this function makes making a variables instance easy
 
+instance Weakenable STLC where
+  weaken :: STLC as a -> STLC (b ': as) a
+  weaken (Sim f) = Sim (\(ECons _ env) -> f env)
+
 instance Variables STLC where
   var :: STLC (a ': as) a
   var = Sim (\(ECons (Identity x) _) -> x)
-  weaken :: STLC as a -> STLC (b ': as) a
-  weaken (Sim f) = Sim (\(ECons _ env) -> f env)
 
 instance LiftVariables STLC
 
@@ -99,7 +102,7 @@ class STLChoas exp where
 
 instance STLChoas (EnvI STLC) where
   app = UE.liftFO2 appSem -- not a binder => FO, 2 args => FO2
-  lam = UE.liftSOn (ol1 :. End) lamSem -- binder => SO
+  lam = UE.liftSOn (ol1 :. ENil) lamSem -- binder => SO
 
 -- Now you can interpret open expressions if you want
 -- -----------------------------------------------------------------------------

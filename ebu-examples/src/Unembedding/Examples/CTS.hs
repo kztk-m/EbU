@@ -32,8 +32,8 @@ import           Data.Foldable   (toList)
 import           Data.List       (foldl')
 import           Data.Monoid     (Sum (Sum))
 import qualified Unembedding     as UE
-import           Unembedding     (Dim (..), EnvI (..), LiftVariables,
-                                  Variables (..), ol0, ol1)
+import           Unembedding     (EnvI (..), LiftVariables, Variables (..),
+                                  Weakenable, ol0, ol1)
 import           Unembedding.Env
 
 -- Change Structures:
@@ -116,13 +116,15 @@ type DEnv = Env PackedDiffDelta
 data CTS env a = forall c. CTS (VEnv env -> (a, c))            -- Initializer
                                ((DEnv env, c) -> (Delta a, c)) -- Translator
 
-instance Variables CTS where
-  var = CTS (\(ECons (PackDiff x) _) -> (x, ()))
-            (\(ECons (PackDiffDelta dx) _, _) -> (dx, ()))
+instance Weakenable CTS where
   weaken (CTS f tr) = CTS f' tr'
     where
       f' (ECons _ e) = f e
       tr' (ECons _ de, c) = tr (de, c)
+
+instance Variables CTS where
+  var = CTS (\(ECons (PackDiff x) _) -> (x, ()))
+            (\(ECons (PackDiffDelta dx) _, _) -> (dx, ()))
 
 instance LiftVariables CTS where
 
@@ -202,7 +204,7 @@ instance CTSBase (EnvI CTS) where
   pair = UE.liftFO2 pairSem
   fst_ = UE.liftFO1 fstSem
   snd_ = UE.liftFO1 sndSem
-  let_ = UE.liftSOn (ol0 :. ol1 :. End) letSem
+  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
 
 -- The language is now extended to support Sequences
 -- To do this, we have the diff infrastructure for sequences, then another type
@@ -403,8 +405,8 @@ instance CTSSeq (EnvI CTS) where
   empty     = UE.liftFO0 emptySem
   singleton = UE.liftFO1 singletonSem
   concat    = UE.liftFO1 concatSem
-  map       = UE.liftSOn (ol1 :. ol0 :. End) mapSem
-  concatMap = UE.liftSOn (ol1 :. ol0 :. End) (\f x -> concatSem $ mapSem f x )
+  map       = UE.liftSOn (ol1 :. ol0 :. ENil) mapSem
+  concatMap = UE.liftSOn (ol1 :. ol0 :. ENil) (\f x -> concatSem $ mapSem f x )
 
 -- Now armed with the features for a more interesting example, we interpret open
 -- expressions using UE.runOpen

@@ -58,16 +58,16 @@ class HSTLC f => HSTLCS f s | s -> f where
   put  :: String -> s ()
 
 instance LiftVariables STLC where
-  type Var STLC = Ix 
+  type Var STLC = Ix
   liftVar = Var
 
 instance HSTLC (EnvI STLC) where
-  lam = liftSOn (ol1 :. End) Lam
+  lam = liftSOn (ol1 :. ENil) Lam
   app = liftFO2 App
 
 instance HSTLCS (EnvI STLC) (EnvI STLCS) where
   ret = liftFO1' Ret
-  let_ = liftSOn' (ol0 ::. ol1 ::. End') (Proxy @STLC) Let
+  let_ = liftSOn' (ol0 :. ol1 :. ENil) (Proxy @STLC) Let
   put s = liftFO0' (Put s)
 
 

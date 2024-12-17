@@ -16,7 +16,7 @@ Generic environment used by Embedding by Unembedding, and functions over it.
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 module Unembedding.Env (
-  Env, pattern ENil, pattern ECons, Ix(..), lookEnv, lenEnv, mapEnv, mapEnvWithIx, fromIndexer,
+  Env, pattern ENil, pattern ECons, Ix(..), lookEnv, lenEnv, mapEnv, mapEnvWithIx, pattern (:.), fromIndexer,
   Append, appendEnv,
 
   Func, fromFunc,
@@ -53,12 +53,20 @@ pattern ECons e es <- MkEnv n (ECons_ e (MkEnv (n-1) -> es))
   where
     ECons e es = MkEnv (lenEnv es + 1) (ECons_ e (getEnvBody es))
 
+-- | infix version of 'ECons'
+pattern (:.) :: () => (as ~ a1 : as1) => f a1 -> Env f as1 -> Env f as
+pattern e :. es = ECons e es
+
+infixr 4 :.
+
+
 #if __GLASGOW_HASKELL__ >= 902
 {-# INLINABLE ENil #-}
 {-# INLINABLE ECons #-}
 #endif
 
 {-# COMPLETE ENil, ECons #-}
+{-# COMPLETE ENil, (:.) #-}
 
 -- >>> lenEnv $ ECons [1] $ ECons [2] $ ENil
 -- 2

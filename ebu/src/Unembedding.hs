@@ -8,7 +8,10 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -20,7 +23,7 @@ Contains unembedding framework to support using the Embedding by Unembedding tec
 module Unembedding
   (
     -- * Interface Typeclass
-    LiftVariables(..), Variables (..),
+    LiftVariables(..), Weakenable(..), Variables (..),
 
     -- * Interpretation of open terms
     --
@@ -37,7 +40,7 @@ module Unembedding
 
     -- * Lifting functions for second-order language constructs
     OfLength(..), ol0, ol1, ol2, ol3, ol4,
-    FuncTerm, FuncU, Dim(..),
+    FuncTerm, FuncU, Dim,
     liftSOn,
 
     -- ** Internal datatypes and functions used in 'liftSOn'.
@@ -50,7 +53,7 @@ module Unembedding
     -- * Lifting functions for languages with multiple semantic domains (experimental)
     liftFO', liftFO0', liftFO1', liftFO2',
     liftFOF',
-    FuncSem', FuncH', Dim'(..), liftSOn',
+    FuncSem', FuncH', Dim', liftSOn',
 
     -- ** Interpretation functions
     runOpen', runOpenN', runClose',
@@ -60,8 +63,14 @@ module Unembedding
     SemSig(..), SemRep'(..), HRep'(..), liftSO',
     liftSOF',
 
+    -- ** More generalized interface (experimental)
+    FuncSemGen, FuncHGen, DimMult(..), DimGen,
+    liftSOnGen, liftSOGen,
+
+
+
+
     -- * Internal Manipulation of Variables
-    weakenMany,
     var0, var1, var2,
 
   ) where
@@ -75,31 +84,38 @@ import           Unembedding.Env
 -- useful envs
 type TEnv     = Env Proxy    -- Type environment.
 
+-- | Weakenable semantics.
+class Weakenable (sem :: [k] -> k' -> Type) where
+  weaken :: sem as a -> sem (b : as) a
+
+  -- | Generic weakening
+  --   Compares two environments and repeatedly applies 'weaken' to unify them
+  --   While it appears partial, it is guaranteed to work by the original unembedding work.
+  -- weaken + compare
+  weakenMany :: TEnv as -> TEnv as' -> sem as b -> sem as' b
+  weakenMany e1 e2 = go lenDiff e1 e2
+    where
+      l1 = lenEnv e1
+      l2 = lenEnv e2
+      lenDiff = l2 - l1 -- must be positive
+      go :: forall as as' b. Int -> TEnv as -> TEnv as' -> sem as b -> sem as' b
+      go 0 _   _             ls = unsafeCoerce ls
+      go n e1' (ECons _ e2') ls = weaken $ go (n-1) e1' e2' ls
+      go _ _    _            _  = error $ "weakenMany: the first argument (len: " ++ show l1 ++  ") is smaller than the second (lens: " ++ show l2 ++ ")"
+
 -- | Defines semantics that can be unembed: those that have an environment that can
 --   focus on a variable, and be weakened
-class Variables (semvar :: [k] -> k -> Type) where
-  var    :: semvar (a ': as) a
-  weaken :: semvar as a -> semvar (b ': as) a
 
--- | Ix is a free Variables.
-instance Variables Ix where
-  var = IxZ
+class Weakenable semvar => Variables (semvar :: [k] -> k -> Type) where
+  var    :: semvar (a ': as) a
+
+instance Weakenable Ix where
   weaken = IxS
 
--- | Generic weakening
---   Compares two environments and repeatedly applies 'weaken' to unify them
---   While it appears partial, it is guaranteed to work by the original unembedding work.
--- weaken + compare
-weakenMany :: Variables semvar => TEnv as -> TEnv as' -> semvar as b -> semvar as' b
-weakenMany e1 e2 = go lenDiff e1 e2
-  where
-    l1 = lenEnv e1
-    l2 = lenEnv e2
-    lenDiff = l2 - l1
-    go :: forall sem as as' b. Variables sem => Int -> TEnv as -> TEnv as' -> sem as b -> sem as' b
-    go 0 _   _             ls = unsafeCoerce ls
-    go n e1' (ECons _ e2') ls = weaken $ go (n-1) e1' e2' ls
-    go _ _    _            _  = error $ "weakenMany: the first argument (len: " ++ show l1 ++  ") is smaller than the second (lens: " ++ show l2 ++ ")"
+-- | Ix is a free instance of 'Variables'.
+instance Variables Ix where
+  var = IxZ
+
 
 -- Handy functions for getting the semantics to focus on a particular variable in its env
 -- Defined as a combo of 'var' and 'weaken'
@@ -271,27 +287,35 @@ data OfLength as where
   LZ :: OfLength '[]
   LS :: OfLength as -> OfLength (a ': as)
 
+class LiftOfLength f as t | t -> as where
+  liftOfLength :: OfLength as -> f t
+
+instance LiftOfLength OfLength as as where
+  liftOfLength = id
+
+
+
 -- handy short cuts for values:
 
 -- | Smart constructor for an 'OfLength' zero.
-ol0 :: OfLength '[]
-ol0 = LZ
+ol0 :: LiftOfLength f '[] t => f t
+ol0 = liftOfLength LZ
 
 -- | Smart constructor for an 'OfLength' one.
-ol1 :: OfLength '[a]
-ol1 = LS LZ
+ol1 :: LiftOfLength f '[a] t => f t
+ol1 = liftOfLength $ LS LZ
 
 -- | Smart constructor for an 'OfLength' two.
-ol2 :: OfLength '[a,b]
-ol2 = LS ol1
+ol2 :: LiftOfLength f '[a,b] t => f t
+ol2 = liftOfLength $ LS ol1
 
 -- | Smart constructor for an 'OfLength' three.
-ol3 :: OfLength '[a,b,c]
-ol3 = LS ol2
+ol3 :: LiftOfLength f '[a,b,c] t => f t
+ol3 = liftOfLength $ LS ol2
 
 -- | Smart constructor for an 'OfLength' four.
-ol4 :: OfLength '[a,b,c,d]
-ol4 = LS ol3
+ol4 :: LiftOfLength f '[a,b,c,d] t => f t
+ol4 = liftOfLength $ LS ol3
 
 -- Corresponds to (forall env. Env (TermRep sem env) ss -> sem env r)
 type family FuncTerm (sem :: [k] -> k -> Type) (env :: [k])
@@ -300,11 +324,18 @@ type family FuncTerm (sem :: [k] -> k -> Type) (env :: [k])
   FuncTerm sem env ((as ':~> a) ': ss) r = sem (Append as env) a
                                            -> FuncTerm sem env ss r
 
-data Dim (ss :: [Sig2 k]) where
-  End  :: Dim '[]
-  (:.) :: OfLength as -> Dim ss -> Dim ((as ':~> a) ': ss)
+-- data Dim (ss :: [Sig2 k]) where
+--   End  :: Dim '[]
+--   (:.) :: OfLength as -> Dim ss -> Dim ((as ':~> a) ': ss)
+-- infixr 4 :.
 
-infixr 4 :.
+data DimSimple (s :: Sig2 k) where
+  DimSimple :: OfLength as -> DimSimple (as ':~> a)
+
+instance t ~ (as ':~> a) => LiftOfLength DimSimple as t where
+  liftOfLength = DimSimple
+
+
 
 fromFuncTerm :: FuncTerm sem env ss r
              -> Env (TermRep sem env) ss -> sem env r
@@ -319,8 +350,8 @@ type family FuncU (sem :: [k] -> k -> Type) (ss :: [Sig2 k])
                                     -> FuncU sem ss r
 
 toFuncU :: Dim ss -> (Env (URep sem) ss -> EnvI sem r) -> FuncU sem ss r
-toFuncU End f       = f ENil
-toFuncU (n :. ns) f = \k -> toFuncU ns (f . ECons (toURep n k))
+toFuncU ENil f                     = f ENil
+toFuncU (ECons (DimSimple n) ns) f = \k -> toFuncU ns (f . ECons (toURep n k))
 
 toURep :: OfLength as -> Func (EnvI sem) as (EnvI sem r) -> URep sem (as ':~> r)
 toURep n f = UR (ofl2TEnv n) (fromFunc f)
@@ -332,28 +363,33 @@ ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
 -- | Handy version of 'liftSO'. The type looks complicated but can be comprehensive
 -- when we apply it to specific @Dim ss@ values.
 --
--- >>> :t liftSOn (ol0 :. ol0 :. End)
--- >>> :t liftSOn (ol1 :. End)
--- >>> :t liftSOn (ol0 :. ol2 :. End)
--- liftSOn (ol0 :. ol0 :. End)
---   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+-- >>> :t liftSOn (ol0 :. ol0 :. ENil)
+-- >>> :t liftSOn (ol1 :. ENil)
+-- >>> :t liftSOn (ol0 :. ol2 :. ENil)
+-- liftSOn (ol0 :. ol0 :. ENil)
+--   :: forall {k2} {sem :: [k2] -> k2 -> *} {a1 :: k2} {a2 :: k2}
+--             {r :: k2}.
 --      LiftVariables sem =>
---      (forall (env :: [k]). sem env a1 -> sem env a2 -> sem env r)
+--      (forall (env :: [k2]). sem env a1 -> sem env a2 -> sem env r)
 --      -> EnvI sem a1 -> EnvI sem a2 -> EnvI sem r
--- liftSOn (ol1 :. End)
---   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {r :: k}.
+-- liftSOn (ol1 :. ENil)
+--   :: forall {k2} {sem :: [k2] -> k2 -> *} {a1 :: k2} {a2 :: k2}
+--             {r :: k2}.
 --      LiftVariables sem =>
---      (forall (env :: [k]). sem (a1 : env) a2 -> sem env r)
+--      (forall (env :: [k2]). sem (a1 : env) a2 -> sem env r)
 --      -> (EnvI sem a1 -> EnvI sem a2) -> EnvI sem r
--- liftSOn (ol0 :. ol2 :. End)
---   :: forall {k} {sem :: [k] -> k -> *} {a1 :: k} {a2 :: k} {b :: k}
---             {a3 :: k} {r :: k}.
+-- liftSOn (ol0 :. ol2 :. ENil)
+--   :: forall {k2} {sem :: [k2] -> k2 -> *} {a1 :: k2} {a2 :: k2}
+--             {b :: k2} {a3 :: k2} {r :: k2}.
 --      LiftVariables sem =>
---      (forall (env :: [k]).
+--      (forall (env :: [k2]).
 --       sem env a1 -> sem (a2 : b : env) a3 -> sem env r)
 --      -> EnvI sem a1
 --      -> (EnvI sem a2 -> EnvI sem b -> EnvI sem a3)
 --      -> EnvI sem r
+
+
+type Dim = Env DimSimple
 
 liftSOn :: forall sem ss r. LiftVariables sem => Dim ss
         -> (forall env. FuncTerm sem env ss r) -> FuncU sem ss r
@@ -428,14 +464,22 @@ type family FuncH' (semExp :: [k] -> k -> Type) (semR :: [k] -> kR -> Type) (ss 
     -> FuncH' semExp semR ss r
 
 toFuncH' :: Dim' ss -> (Env (HRep' semExp) ss -> EnvI semR r) -> FuncH' semExp semR ss r
-toFuncH' End' f       = f ENil
-toFuncH' (n ::. ns) f = \k -> toFuncH' ns (f . ECons (toHRep' n k))
+toFuncH' ENil f              = f ENil
+toFuncH' (DimMult n :. ns) f = \k -> toFuncH' ns (f . ECons (toHRep' n k))
 
-data Dim' (ss :: [SemSig k]) where
-  End'  :: Dim' '[]
-  (::.) :: OfLength as -> Dim' ss -> Dim' (MkSemSig sem as a ': ss)
+-- data Dim' (ss :: [SemSig k]) where
+--   End'  :: Dim' '[]
+--   (::.) :: OfLength as -> Dim' ss -> Dim' (MkSemSig sem as a ': ss)
 
-infixr 4 ::.
+-- infixr 4 ::.
+
+data DimMult (s :: SemSig k) where
+  DimMult :: OfLength as -> DimMult (MkSemSig sem as a)
+
+instance t ~ MkSemSig sem as a => LiftOfLength DimMult as t where
+  liftOfLength = DimMult
+
+type Dim' = Env DimMult
 
 
 -- Corresponds to (forall env. Env (SemRep' env) ss -> semR env r)
@@ -463,34 +507,33 @@ liftSOn' ns _ f =
 
 
 
--- >>> :t liftSOn' End' (Proxy @Ix)
--- liftSOn' End' (Proxy @Ix)
+-- >>> :t liftSOn' ENil (Proxy @Ix)
+-- liftSOn' ENil (Proxy @Ix)
 --   :: forall {k} {kR} {semR :: [k] -> kR -> *} {r :: kR}.
 --      (forall (env :: [k]). semR env r) -> EnvI semR r
 
 
 
--- >>> :t liftSOn' (ol0 ::. ol0 ::. End')
--- >>> :t liftSOn' (ol1 ::. End')
--- liftSOn' (ol0 ::. ol0 ::. End')
---   :: forall {k} {kR} {k'1} {k'2} {semVar :: [k] -> k -> *}
---             {semExp :: [k] -> k -> *} {proxy :: ([k] -> k -> *) -> *}
---             {semR :: [k] -> kR -> *} {sem1 :: [k] -> k'1 -> *} {a1 :: k'1}
---             {sem2 :: [k] -> k'2 -> *} {a2 :: k'2} {r :: kR}.
---      LiftVariables semVar semExp =>
+-- >>> :t liftSOn' (ol0 :. ol0 :. ENil)
+-- >>> :t liftSOn' (ol1 :. ENil)
+-- liftSOn' (ol0 :. ol0 :. ENil)
+--   :: forall {k2} {kR} {k'1} {k'2} {semExp :: [k2] -> k2 -> *}
+--             {proxy :: ([k2] -> k2 -> *) -> *} {semR :: [k2] -> kR -> *}
+--             {sem1 :: [k2] -> k'1 -> *} {a1 :: k'1} {sem2 :: [k2] -> k'2 -> *}
+--             {a2 :: k'2} {r :: kR}.
+--      LiftVariables semExp =>
 --      proxy semExp
---      -> (forall (env :: [k]). sem1 env a1 -> sem2 env a2 -> semR env r)
+--      -> (forall (env :: [k2]). sem1 env a1 -> sem2 env a2 -> semR env r)
 --      -> EnvI sem1 a1
 --      -> EnvI sem2 a2
 --      -> EnvI semR r
--- liftSOn' (ol1 ::. End')
---   :: forall {k} {kR} {k'} {semVar :: [k] -> k -> *}
---             {semExp :: [k] -> k -> *} {proxy :: ([k] -> k -> *) -> *}
---             {semR :: [k] -> kR -> *} {sem :: [k] -> k' -> *} {a1 :: k}
---             {a2 :: k'} {r :: kR}.
---      LiftVariables semVar semExp =>
+-- liftSOn' (ol1 :. ENil)
+--   :: forall {k2} {kR} {k'} {semExp :: [k2] -> k2 -> *}
+--             {proxy :: ([k2] -> k2 -> *) -> *} {semR :: [k2] -> kR -> *}
+--             {sem :: [k2] -> k' -> *} {a1 :: k2} {a2 :: k'} {r :: kR}.
+--      LiftVariables semExp =>
 --      proxy semExp
---      -> (forall (env :: [k]). sem (a1 : env) a2 -> semR env r)
+--      -> (forall (env :: [k2]). sem (a1 : env) a2 -> semR env r)
 --      -> (EnvI semExp a1 -> EnvI sem a2)
 --      -> EnvI semR r
 
@@ -543,3 +586,164 @@ runOpenN' e f =
 -- | A special case of 'runOpenN''
 runClose' :: EnvI sem a -> sem '[] a
 runClose' e = runEnvI e ENil
+
+{-
+Further generalized interface.
+-}
+
+
+-- MkKBindSpec sem a has kind KBindSpec k
+data KBindSpec k = forall k'. MkKBindSpec ([k] -> k' -> Type) k'
+
+data BindSpec k = MkBindSpec [k] [KBindSpec k]
+
+data ArgSpec k = forall k'. MkArgSpec ([k] -> k' -> Type) (BindSpec k) k'
+
+
+data SemRepK (env :: [k]) (kbspec :: KBindSpec k) where
+  SemRK :: Weakenable sem => sem env a -> SemRepK env (MkKBindSpec sem a)
+-- "semantic domain" representation.
+data SemRepGen (env :: [k]) (aspec :: ArgSpec k) where
+  SemRGen :: (Env (SemRepK (Append as env)) bs -> sem (Append as env) b) -> SemRepGen env (MkArgSpec sem (MkBindSpec as bs) b)
+
+-- HOAS representation.
+
+data HRepK (kbspec :: KBindSpec k) where
+  HRK :: EnvI sem a -> HRepK (MkKBindSpec sem a)
+
+data HRepGen (semExp :: [k] -> k -> Type) (aspec :: ArgSpec k) where
+  HRGen :: TEnv as -> (Env (EnvI semExp) as -> Env HRepK bs -> EnvI sem b) -> HRepGen semExp (MkArgSpec sem (MkBindSpec as bs) b)
+
+convertHtoSemGen :: LiftVariables semE => TEnv env -> HRepGen semE x -> SemRepGen env x
+convertHtoSemGen shEnv (HRGen shAs k) = SemRGen $ convertConstructArgGen shEnv shAs k
+
+convertConstructArgGen :: LiftVariables semE => TEnv env -> TEnv as -> (Env (EnvI semE) as -> Env HRepK bs -> EnvI sem b) -> Env (SemRepK (Append as env)) bs -> sem (Append as env) b
+convertConstructArgGen shEnv shAs k kargs =
+  let shAsEnv = appendEnv shAs shEnv        -- TEnv (Append as env)
+      xs = makeVariables shEnv shAs shAsEnv -- Env (EnvI semExp) as
+  in runEnvI (k xs (weakenAll shAsEnv kargs)) shAsEnv
+
+weakenAll :: TEnv env' -> Env (SemRepK env') bs -> Env HRepK bs
+weakenAll shAsEnv = mapEnv (\(SemRK s) -> HRK $ EnvI $ \tenv' -> weakenMany shAsEnv tenv' s)
+
+-- | Core function to lift second-order constructs, supporting multiple semantic domains.
+liftSOGen :: forall semExp sem ss r. LiftVariables semExp =>
+  (forall env. Env (SemRepGen env) ss -> sem env r)
+  -> Env (HRepGen semExp) ss -> EnvI sem r
+liftSOGen f ks = EnvI $ \shEnv -> f (mapEnv (convertHtoSemGen shEnv) ks)
+
+data BDesc (as :: [k]) (bs :: [KBindSpec k]) where
+  E :: BDesc '[] '[]
+  K :: Weakenable sem => BDesc as bs -> BDesc as (MkKBindSpec sem b : bs)
+  U :: BDesc as bs -> BDesc (a : as) bs
+
+descToTEnv :: BDesc as bs -> TEnv as
+descToTEnv E     = ENil
+descToTEnv (K d) = descToTEnv d
+descToTEnv (U d) = ECons Proxy (descToTEnv d)
+
+type family BsFunc (bs :: [KBindSpec k]) semR r = res | res -> semR r where
+  BsFunc '[] semR r = EnvI semR r
+  BsFunc (MkKBindSpec sem b : bs) semR r = EnvI sem b -> BsFunc bs semR r
+
+fromBsFunc :: BDesc as bs -> BsFunc bs semR r -> Env HRepK bs -> EnvI semR r
+fromBsFunc E f _                      = f
+fromBsFunc (K d) f (ECons (HRK e) es) = fromBsFunc d (f e) es
+fromBsFunc (U d) f es                 = fromBsFunc d f es
+
+
+toHRepGen :: BDesc as bs -> Func (EnvI semExp) as (BsFunc bs semR r) -> HRepGen semExp (MkArgSpec semR (MkBindSpec as bs) r)
+toHRepGen d f = HRGen (descToTEnv d) (fromBsFunc d . fromFunc f)
+
+data DimNested (s :: ArgSpec k) where
+  DimNested :: BDesc as bs -> DimNested (MkArgSpec sem (MkBindSpec as bs) a)
+
+instance t ~ MkArgSpec sem (MkBindSpec as '[]) a => LiftOfLength DimNested as t where
+  liftOfLength = DimNested . go
+    where
+      go :: OfLength xs -> BDesc xs '[]
+      go LZ     = E
+      go (LS x) = U (go x)
+
+type DimGen = Env DimNested
+
+type family FuncHGen
+      (semExp :: [k] -> k -> Type)
+      (semR   :: [k] -> kR -> Type)
+      (ss :: [ArgSpec k]) (r :: kR) = res | res -> semR r k where
+  FuncHGen semExp semR '[] r = EnvI semR r
+  FuncHGen semExp semR (MkArgSpec sem (MkBindSpec as bs) a : ss) r =
+    Func (EnvI semExp) as (BsFunc bs sem a)
+    -> FuncHGen semExp semR ss r
+
+toFuncHGen :: DimGen ss -> (Env (HRepGen semExp) ss -> EnvI semR r) -> FuncHGen semExp semR ss r
+toFuncHGen ENil f         = f ENil
+toFuncHGen (ECons (DimNested d) ds) f = \k -> toFuncHGen ds (f . ECons (toHRepGen d k))
+
+
+type family BsFuncSem (bs :: [KBindSpec k]) (env :: [k]) r = res where
+  BsFuncSem '[] env r = r
+  BsFuncSem (MkKBindSpec sem b : bs) env r = sem env b -> BsFuncSem bs env r
+
+type family FuncSemGen
+       (semR :: [k] -> kR -> Type)
+       (env :: [k])
+       (ss :: [ArgSpec k]) (r :: kR) | r -> semR env r where
+  FuncSemGen semR env '[] r = semR env r
+  FuncSemGen semR env (MkArgSpec sem (MkBindSpec as bs) a ': ss) r =
+    BsFuncSem bs (Append as env) (sem (Append as env) a)
+    -> FuncSemGen semR env ss r
+
+fromFuncSemK ::
+  BDesc as0 bs -> (Env (SemRepK asenv) bs -> sem asenv b) -> BsFuncSem bs asenv (sem asenv b)
+fromFuncSemK E f     = f ENil
+fromFuncSemK (U d) f = fromFuncSemK d f
+fromFuncSemK (K d) f = \s -> fromFuncSemK d (f . ECons (SemRK s))
+
+fromFuncSemGen :: DimGen ss -> FuncSemGen semR env ss r -> Env (SemRepGen env) ss -> semR env r
+fromFuncSemGen _ f ENil = f
+fromFuncSemGen (DimNested d :. ds) f (ECons (SemRGen x) xs) =
+  fromFuncSemGen ds (f $ fromFuncSemK d x) xs
+
+liftSOnGen ::
+  forall semExp semR ss r proxy.
+  LiftVariables semExp =>
+  DimGen ss
+  -> proxy semExp
+  -> (forall env. FuncSemGen semR env ss r)
+  -> FuncHGen semExp semR ss r
+liftSOnGen ds _ f =
+ let h :: forall env. Env (SemRepGen env) ss -> semR env r
+     h = fromFuncSemGen ds f
+  in toFuncHGen ds (liftSOGen @semExp h)
+
+-- >>> :t liftSOnGen (DimNested (K E) :. ENil) Proxy
+-- liftSOnGen (DimNested (K E) :. ENil) Proxy
+--   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
+--             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
+--             {sem2 :: [k] -> k'2 -> *} {b :: k'1} {a :: k'2} {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k]). (sem1 env b -> sem2 env a) -> semR env r)
+--      -> (EnvI sem1 b -> EnvI sem2 a) -> EnvI semR r
+
+-- >>> :t liftSOnGen (ol1 :. ENil) Proxy
+-- liftSOnGen (ol1 :. ENil) Proxy
+--   :: forall {k2} {kR} {k'} {semExp :: [k2] -> k2 -> *}
+--             {semR :: [k2] -> kR -> *} {sem :: [k2] -> k' -> *} {a1 :: k2}
+--             {a2 :: k'} {r :: kR}.
+--      LiftVariables semExp =>
+--      (forall (env :: [k2]). sem (a1 : env) a2 -> semR env r)
+--      -> (EnvI semExp a1 -> EnvI sem a2) -> EnvI semR r
+
+
+-- >>> :t liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
+-- liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
+--   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
+--             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
+--             {sem2 :: [k] -> k'2 -> *} {a1 :: k} {b :: k'1} {a2 :: k'2}
+--             {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k]).
+--       (sem1 (a1 : env) b -> sem2 (a1 : env) a2) -> semR env r)
+--      -> (EnvI semExp a1 -> EnvI sem1 b -> EnvI sem2 a2) -> EnvI semR r
+

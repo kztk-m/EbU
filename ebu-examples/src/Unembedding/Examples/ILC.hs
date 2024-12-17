@@ -33,7 +33,7 @@ import qualified Data.Sequence            as S
 -- unembedding tooling
 import qualified Unembedding              as UE
 import           Unembedding              (Dim (..), EnvI (..), LiftVariables,
-                                           Variables (..), ol0, ol1)
+                                           Variables (..), Weakenable, ol0, ol1)
 import           Unembedding.Env
 
 -- We will reuse the change structure from CTS.
@@ -69,15 +69,17 @@ data ILC env a = Inc
 -- (the type class just insists that there is a way to reference a variable in context,
 --  and a way to weaken that context. Featuring environments provides this)
 
-instance Variables ILC where
-  var :: ILC (a : as) a
-  var = Inc (\  (ECons (PackDiff a) _) -> a)
-            (\_ (ECons (PackDiffDelta da) _) -> da)
+instance Weakenable ILC where
   weaken :: ILC as a -> ILC (b : as) a
   weaken (Inc s d) = Inc s' d'
     where
       s' (ECons _ env) = s env
       d' (ECons _ venv) (ECons _ denv) = d venv denv
+
+instance Variables ILC where
+  var :: ILC (a : as) a
+  var = Inc (\  (ECons (PackDiff a) _) -> a)
+            (\_ (ECons (PackDiffDelta da) _) -> da)
 
 instance LiftVariables ILC
 
@@ -144,7 +146,7 @@ instance ILChoas (EnvI ILC) where
   fst_ = UE.liftFO1 fstSem  -- 1 arg  => 1
   snd_ = UE.liftFO1 sndSem
   -- our binding construct => we use listSO
-  let_ = UE.liftSOn (ol0 :. ol1 :. End) letSem
+  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
 
 -- Now you can interpret open expressions if you want
 -- -----------------------------------------------------------------------------
@@ -368,7 +370,7 @@ instance ILCSeq (EnvI ILC) where
   empty     = UE.liftFO0 emptySem
   singleton = UE.liftFO1 singletonSem
   concat    = UE.liftFO1 concatSem
-  map       = UE.liftSOn (ol1 :. ol0 :. End) mapSem
+  map       = UE.liftSOn (ol1 :. ol0 :. ENil) mapSem
 
 
 -- testing concat
