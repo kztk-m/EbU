@@ -138,9 +138,6 @@ instance (HModalL' u e, STLC' e, Box' e) => HModalL (UE.EnvI (U u)) (UE.EnvI (E 
 --       letBSem :: C e env (B a) -> (U u env a -> C e env b) -> C e env b
 --       letBSem (C e) f = C (letb' e $ \u -> let C res = f (U u) in res)
 
-newtype SwModalL oenv menv a = SwModalL (ModalL menv oenv a)
-newtype WrapE oenv a = WrapE (UE.EnvI (SwModalL oenv) a)
-
 type family Fst (a :: (k , k')) :: k where
   Fst '(a , b) = a
 
