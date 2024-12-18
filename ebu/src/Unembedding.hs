@@ -40,7 +40,7 @@ module Unembedding
 
     -- * Lifting functions for second-order language constructs
     OfLength(..), ol0, ol1, ol2, ol3, ol4,
-    FuncTerm, FuncU, Dim,
+    FuncTerm, FuncU, Dim, DimSimple(..),
     liftSOn,
 
     -- ** Internal datatypes and functions used in 'liftSOn'.
@@ -53,7 +53,7 @@ module Unembedding
     -- * Lifting functions for languages with multiple semantic domains (experimental)
     liftFO', liftFO0', liftFO1', liftFO2',
     liftFOF',
-    FuncSem', FuncH', Dim', liftSOn',
+    FuncSem', FuncH', Dim', DimMult(..), liftSOn',
 
     -- ** Interpretation functions
     runOpen', runOpenN', runClose',
@@ -64,7 +64,7 @@ module Unembedding
     liftSOF',
 
     -- ** More generalized interface (experimental)
-    FuncSemGen, FuncHGen, DimMult(..), DimGen,
+    FuncSemGen, FuncHGen, DimNested(..), BDesc(..), DimGen,
     liftSOnGen, liftSOGen,
 
 
@@ -747,3 +747,13 @@ liftSOnGen ds _ f =
 --       (sem1 (a1 : env) b -> sem2 (a1 : env) a2) -> semR env r)
 --      -> (EnvI semExp a1 -> EnvI sem1 b -> EnvI sem2 a2) -> EnvI semR r
 
+-- >>> :t liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
+-- liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
+--   :: forall {k2} {k'1} {kR} {k'2} {k'3} {semExp :: [k2] -> k2 -> *}
+--             {sem1 :: [k2] -> k'1 -> *} {semR :: [k2] -> kR -> *}
+--             {sem2 :: [k2] -> k'2 -> *} {a1 :: k'2} {sem3 :: [k2] -> k'3 -> *}
+--             {b :: k'1} {a2 :: k'3} {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k2]).
+--       sem2 env a1 -> (sem1 env b -> sem3 env a2) -> semR env r)
+--      -> EnvI sem2 a1 -> (EnvI sem1 b -> EnvI sem3 a2) -> EnvI semR r
