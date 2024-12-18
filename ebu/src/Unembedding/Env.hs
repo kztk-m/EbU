@@ -16,7 +16,7 @@ Generic environment used by Embedding by Unembedding, and functions over it.
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 module Unembedding.Env (
-  Env, pattern ENil, pattern ECons, Ix(..), lookEnv, lenEnv, mapEnv, mapEnvWithIx, pattern (:.), fromIndexer,
+  Env(.., ENil, ECons, (:.)), Ix(..), lookEnv, lenEnv, mapEnv, mapEnvWithIx, fromIndexer,
   Append, appendEnv,
 
   Func, fromFunc,
