@@ -39,7 +39,7 @@ module Unembedding
     liftFOF,
 
     -- * Lifting functions for second-order language constructs
-    OfLength(..), ol0, ol1, ol2, ol3, ol4,
+    OfLength(..), LiftOfLength(..), ol0, ol1, ol2, ol3, ol4,
     FuncTerm, FuncU, Dim, DimSimple(..),
     liftSOn,
 
@@ -51,8 +51,11 @@ module Unembedding
     liftSO,
 
     -- * Lifting functions for languages with multiple semantic domains (experimental)
-    liftFO', liftFO0', liftFO1', liftFO2',
+    liftFO0', liftFO1', liftFO2',
     liftFOF',
+
+    liftFO', SemRepFO(..), HRepFO(..), SemSigFO(..),
+
     FuncSem', FuncH', Dim', DimMult(..), liftSOn',
 
     -- ** Interpretation functions
@@ -63,12 +66,15 @@ module Unembedding
     SemSig(..), SemRep'(..), HRep'(..), liftSO',
     liftSOF',
 
-    -- ** More generalized interface (experimental)
+    -- * More generalized interface for nested EbU
     FuncSemGen, FuncHGen, DimNested(..), BDesc(..), DimGen,
     liftSOnGen, liftSOGen,
+    BsFunc, BsFuncSem,
 
+    -- ** Internal datatypes and functions used in 'liftSOnGen'
 
-
+    KBindSpec(..), BindSpec(..), ArgSpec(..),
+    HRepK(..), HRepGen(..), SemRepK(..), SemRepGen(..),
 
     -- * Internal Manipulation of Variables
     var0, var1, var2,
@@ -81,8 +87,8 @@ import           Unsafe.Coerce   (unsafeCoerce)
 
 import           Unembedding.Env
 
--- useful envs
-type TEnv     = Env Proxy    -- Type environment.
+-- | Value-level representation of guest's typing environments.
+type TEnv     = Env Proxy
 
 -- | Weakenable semantics.
 class Weakenable (sem :: [k] -> k' -> Type) where
@@ -147,7 +153,7 @@ class Variables (Var sem) => LiftVariables (sem :: [k] -> k -> Type) where
 
 instance LiftVariables Ix where
 
--- Wrapper the quantifies over env so that our type can only have one param like the HOAS
+-- | Wrapper the quantifies over env so that our type can only have one param like the HOAS
 -- Called EnvI, short for EnvIndexed, as it is indexed by an environment
 newtype EnvI sem a = EnvI { runEnvI :: forall as. TEnv as -> sem as a }
 
@@ -287,6 +293,7 @@ data OfLength as where
   LZ :: OfLength '[]
   LS :: OfLength as -> OfLength (a ': as)
 
+-- | Class to reuse 'ol1', ..., 'ol4' for 'liftSOn', 'liftSOn'', and 'liftSOnGen'.
 class LiftOfLength f as t | t -> as where
   liftOfLength :: OfLength as -> f t
 
@@ -360,6 +367,9 @@ ofl2TEnv :: OfLength as -> TEnv as
 ofl2TEnv LZ     = ENil
 ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
 
+type Dim = Env DimSimple
+
+
 -- | Handy version of 'liftSO'. The type looks complicated but can be comprehensive
 -- when we apply it to specific @Dim ss@ values.
 --
@@ -387,10 +397,6 @@ ofl2TEnv (LS n) = ECons Proxy (ofl2TEnv n)
 --      -> EnvI sem a1
 --      -> (EnvI sem a2 -> EnvI sem b -> EnvI sem a3)
 --      -> EnvI sem r
-
-
-type Dim = Env DimSimple
-
 liftSOn :: forall sem ss r. LiftVariables sem => Dim ss
         -> (forall env. FuncTerm sem env ss r) -> FuncU sem ss r
 liftSOn ns f =
@@ -492,28 +498,13 @@ fromFuncSem' :: FuncSem' semR env ss r -> Env (SemRep' env) ss -> semR env r
 fromFuncSem' f ENil                 = f
 fromFuncSem' f (ECons (SemR' x) xs) = fromFuncSem' (f x) xs
 
-
-liftSOn' ::
-  forall semExp semR ss r proxy.
-  LiftVariables semExp =>
-  Dim' ss
-  -> proxy semExp
-  -> (forall env. FuncSem' semR env ss r)
-  -> FuncH' semExp semR ss r
-liftSOn' ns _ f =
-  let h :: forall env. Env (SemRep' env) ss -> semR env r
-      h = fromFuncSem' f
-  in toFuncH' ns (liftSO' @semExp h)
-
-
-
+-- | Handy version of 'liftSO'. Unlike 'liftSOn', it requires @proxy semExp@ to determine which
+-- semantic domain variables are in.
+--
 -- >>> :t liftSOn' ENil (Proxy @Ix)
 -- liftSOn' ENil (Proxy @Ix)
 --   :: forall {k} {kR} {semR :: [k] -> kR -> *} {r :: kR}.
 --      (forall (env :: [k]). semR env r) -> EnvI semR r
-
-
-
 -- >>> :t liftSOn' (ol0 :. ol0 :. ENil)
 -- >>> :t liftSOn' (ol1 :. ENil)
 -- liftSOn' (ol0 :. ol0 :. ENil)
@@ -536,6 +527,24 @@ liftSOn' ns _ f =
 --      -> (forall (env :: [k2]). sem (a1 : env) a2 -> semR env r)
 --      -> (EnvI semExp a1 -> EnvI sem a2)
 --      -> EnvI semR r
+liftSOn' ::
+  forall semExp semR ss r proxy.
+  LiftVariables semExp =>
+  Dim' ss
+  -> proxy semExp
+  -> (forall env. FuncSem' semR env ss r)
+  -> FuncH' semExp semR ss r
+liftSOn' ns _ f =
+  let h :: forall env. Env (SemRep' env) ss -> semR env r
+      h = fromFuncSem' f
+  in toFuncH' ns (liftSO' @semExp h)
+
+
+
+
+
+
+
 
 
 data SemSigFO k = forall k'. MkSemSigFO ([k] -> k' -> Type) k'
@@ -592,25 +601,34 @@ Further generalized interface.
 -}
 
 
--- MkKBindSpec sem a has kind KBindSpec k
+-- | A pair of semantic domain and a type.
 data KBindSpec k = forall k'. MkKBindSpec ([k] -> k' -> Type) k'
 
+-- | Binder spec. @MkBindSpec [a1,...,an] [MkKBindSpec sem1 b1, ..., MkKBindSpec semm bm]@
+-- express that a binder binds @[a1,...,an,b1,...,bm]@, in which
+--    * @a1,...,an@ are to be unembedded
+--    * @b1,...,bm@ are kept for the future processing (hence they are compled with semantic domains)
 data BindSpec k = MkBindSpec [k] [KBindSpec k]
 
-data ArgSpec k = forall k'. MkArgSpec ([k] -> k' -> Type) (BindSpec k) k'
+-- | A spec for a language construct argument.
+data ArgSpec k =
+  forall k'. MkArgSpec
+    ([k] -> k' -> Type) -- ^ The semantic domain for the argument to be interpreted.
+    (BindSpec k) -- ^ The binder spec of the argument
+    k' -- ^ The (guest) type of the argument
 
-
+-- | "semantic domain" represention for "k"ept bindings
 data SemRepK (env :: [k]) (kbspec :: KBindSpec k) where
   SemRK :: Weakenable sem => sem env a -> SemRepK env (MkKBindSpec sem a)
--- "semantic domain" representation.
+-- | "semantic domain" representation.
 data SemRepGen (env :: [k]) (aspec :: ArgSpec k) where
   SemRGen :: (Env (SemRepK (Append as env)) bs -> sem (Append as env) b) -> SemRepGen env (MkArgSpec sem (MkBindSpec as bs) b)
 
--- HOAS representation.
-
+-- | HOAS represention for "k"ept bindings
 data HRepK (kbspec :: KBindSpec k) where
   HRK :: EnvI sem a -> HRepK (MkKBindSpec sem a)
 
+-- | HOAS representation.
 data HRepGen (semExp :: [k] -> k -> Type) (aspec :: ArgSpec k) where
   HRGen :: TEnv as -> (Env (EnvI semExp) as -> Env HRepK bs -> EnvI sem b) -> HRepGen semExp (MkArgSpec sem (MkBindSpec as bs) b)
 
@@ -626,15 +644,19 @@ convertConstructArgGen shEnv shAs k kargs =
 weakenAll :: TEnv env' -> Env (SemRepK env') bs -> Env HRepK bs
 weakenAll shAsEnv = mapEnv (\(SemRK s) -> HRK $ EnvI $ \tenv' -> weakenMany shAsEnv tenv' s)
 
--- | Core function to lift second-order constructs, supporting multiple semantic domains.
+-- | Core function to lift second-order constructs, supporting multiple semantic
+-- domains and selective unembedding.
 liftSOGen :: forall semExp sem ss r. LiftVariables semExp =>
   (forall env. Env (SemRepGen env) ss -> sem env r)
   -> Env (HRepGen semExp) ss -> EnvI sem r
 liftSOGen f ks = EnvI $ \shEnv -> f (mapEnv (convertHtoSemGen shEnv) ks)
 
+-- | Binding description.
 data BDesc (as :: [k]) (bs :: [KBindSpec k]) where
   E :: BDesc '[] '[]
+  -- | stands for the corresponding binding is to be kept (for further processing afterwards).
   K :: Weakenable sem => BDesc as bs -> BDesc as (MkKBindSpec sem b : bs)
+  -- | stands for the corresponding binding is to be unembedded.
   U :: BDesc as bs -> BDesc (a : as) bs
 
 descToTEnv :: BDesc as bs -> TEnv as
@@ -705,6 +727,46 @@ fromFuncSemGen _ f ENil = f
 fromFuncSemGen (DimNested d :. ds) f (ECons (SemRGen x) xs) =
   fromFuncSemGen ds (f $ fromFuncSemK d x) xs
 
+-- | Further generation of 'liftSOn''.
+--
+-- >>> :t liftSOnGen (DimNested (K E) :. ENil) Proxy
+-- liftSOnGen (DimNested (K E) :. ENil) Proxy
+--   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
+--             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
+--             {sem2 :: [k] -> k'2 -> *} {b :: k'1} {a :: k'2} {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k]). (sem1 env b -> sem2 env a) -> semR env r)
+--      -> (EnvI sem1 b -> EnvI sem2 a) -> EnvI semR r
+-- >>> :t liftSOnGen (ol1 :. ENil) Proxy
+-- liftSOnGen (ol1 :. ENil) Proxy
+--   :: forall {k2} {kR} {k'} {semExp :: [k2] -> k2 -> *}
+--             {semR :: [k2] -> kR -> *} {sem :: [k2] -> k' -> *} {a1 :: k2}
+--             {a2 :: k'} {r :: kR}.
+--      LiftVariables semExp =>
+--      (forall (env :: [k2]). sem (a1 : env) a2 -> semR env r)
+--      -> (EnvI semExp a1 -> EnvI sem a2) -> EnvI semR r
+-- >>> :t liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
+-- liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
+--   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
+--             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
+--             {sem2 :: [k] -> k'2 -> *} {a1 :: k} {b :: k'1} {a2 :: k'2}
+--             {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k]).
+--       (sem1 (a1 : env) b -> sem2 (a1 : env) a2) -> semR env r)
+--      -> (EnvI semExp a1 -> EnvI sem1 b -> EnvI sem2 a2) -> EnvI semR r
+-- >>> :t liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
+-- liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
+--   :: forall {k2} {k'1} {kR} {k'2} {k'3} {semExp :: [k2] -> k2 -> *}
+--             {sem1 :: [k2] -> k'1 -> *} {semR :: [k2] -> kR -> *}
+--             {sem2 :: [k2] -> k'2 -> *} {a1 :: k'2} {sem3 :: [k2] -> k'3 -> *}
+--             {b :: k'1} {a2 :: k'3} {r :: kR}.
+--      (LiftVariables semExp, Weakenable sem1) =>
+--      (forall (env :: [k2]).
+--       sem2 env a1 -> (sem1 env b -> sem3 env a2) -> semR env r)
+--      -> EnvI sem2 a1 -> (EnvI sem1 b -> EnvI sem3 a2) -> EnvI semR r
+
+
 liftSOnGen ::
   forall semExp semR ss r proxy.
   LiftVariables semExp =>
@@ -717,43 +779,3 @@ liftSOnGen ds _ f =
      h = fromFuncSemGen ds f
   in toFuncHGen ds (liftSOGen @semExp h)
 
--- >>> :t liftSOnGen (DimNested (K E) :. ENil) Proxy
--- liftSOnGen (DimNested (K E) :. ENil) Proxy
---   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
---             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
---             {sem2 :: [k] -> k'2 -> *} {b :: k'1} {a :: k'2} {r :: kR}.
---      (LiftVariables semExp, Weakenable sem1) =>
---      (forall (env :: [k]). (sem1 env b -> sem2 env a) -> semR env r)
---      -> (EnvI sem1 b -> EnvI sem2 a) -> EnvI semR r
-
--- >>> :t liftSOnGen (ol1 :. ENil) Proxy
--- liftSOnGen (ol1 :. ENil) Proxy
---   :: forall {k2} {kR} {k'} {semExp :: [k2] -> k2 -> *}
---             {semR :: [k2] -> kR -> *} {sem :: [k2] -> k' -> *} {a1 :: k2}
---             {a2 :: k'} {r :: kR}.
---      LiftVariables semExp =>
---      (forall (env :: [k2]). sem (a1 : env) a2 -> semR env r)
---      -> (EnvI semExp a1 -> EnvI sem a2) -> EnvI semR r
-
-
--- >>> :t liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
--- liftSOnGen (DimNested (K (U E)) :. ENil) Proxy
---   :: forall {k} {k'1} {kR} {k'2} {semExp :: [k] -> k -> *}
---             {sem1 :: [k] -> k'1 -> *} {semR :: [k] -> kR -> *}
---             {sem2 :: [k] -> k'2 -> *} {a1 :: k} {b :: k'1} {a2 :: k'2}
---             {r :: kR}.
---      (LiftVariables semExp, Weakenable sem1) =>
---      (forall (env :: [k]).
---       (sem1 (a1 : env) b -> sem2 (a1 : env) a2) -> semR env r)
---      -> (EnvI semExp a1 -> EnvI sem1 b -> EnvI sem2 a2) -> EnvI semR r
-
--- >>> :t liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
--- liftSOnGen (ol0 :. DimNested (K E) :. ENil) Proxy
---   :: forall {k2} {k'1} {kR} {k'2} {k'3} {semExp :: [k2] -> k2 -> *}
---             {sem1 :: [k2] -> k'1 -> *} {semR :: [k2] -> kR -> *}
---             {sem2 :: [k2] -> k'2 -> *} {a1 :: k'2} {sem3 :: [k2] -> k'3 -> *}
---             {b :: k'1} {a2 :: k'3} {r :: kR}.
---      (LiftVariables semExp, Weakenable sem1) =>
---      (forall (env :: [k2]).
---       sem2 env a1 -> (sem1 env b -> sem3 env a2) -> semR env r)
---      -> EnvI sem2 a1 -> (EnvI sem1 b -> EnvI sem3 a2) -> EnvI semR r
