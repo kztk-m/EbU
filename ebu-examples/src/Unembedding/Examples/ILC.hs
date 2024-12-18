@@ -19,6 +19,7 @@ cache transfer style
 {-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Unembedding.Examples.ILC where
 
@@ -146,7 +147,7 @@ instance ILChoas (EnvI ILC) where
   fst_ = UE.liftFO1 fstSem  -- 1 arg  => 1
   snd_ = UE.liftFO1 sndSem
   -- our binding construct => we use listSO
-  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
+  let_ = UE.liftSOn @ILC (ol0 :. ol1 :. ENil) letSem
 
 -- Now you can interpret open expressions if you want
 -- -----------------------------------------------------------------------------
@@ -370,7 +371,7 @@ instance ILCSeq (EnvI ILC) where
   empty     = UE.liftFO0 emptySem
   singleton = UE.liftFO1 singletonSem
   concat    = UE.liftFO1 concatSem
-  map       = UE.liftSOn (ol1 :. ol0 :. ENil) mapSem
+  map       = UE.liftSOn @ILC (ol1 :. ol0 :. ENil) mapSem
 
 
 -- testing concat

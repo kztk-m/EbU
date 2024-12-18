@@ -30,6 +30,7 @@ system, the semantics of such a variable (more specifically, ones introduced by
 {-# LANGUAGE UndecidableInstances      #-}
 
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
+{-# LANGUAGE TypeApplications          #-}
 
 
 module Unembedding.Examples.Modal where
@@ -89,7 +90,7 @@ instance STLC' e => UE.LiftVariables (E e) where
   liftVar = E . ovar'
 
 instance STLC' e => STLC (UE.EnvI (E e)) where
-  lam = UE.liftSOn (UE.ol1 :. UE.ENil) lamSem
+  lam = UE.liftSOn @(E e) (UE.ol1 :. UE.ENil) lamSem
     where
       lamSem :: E e (a : env) b -> E e env (a :~> b)
       lamSem (E e) = E $ lam' e
@@ -115,7 +116,7 @@ instance (HModalL' u e, STLC' e, Box' e) => HModalL (UE.EnvI (U u)) (UE.EnvI (E 
   -- `runClose` not for fully-polymorphic expressions (in our case, having type
   -- `forall u e. (STLC e, HModalL u e) => e a`) is dangerous in general.
   box e = UE.EnvI $ \_ -> E $ box' $ let E x = UE.runClose e in x
-  letb = UE.liftSOnGen (UE.ol0 :. UE.DimNested (UE.K UE.E):. UE.ENil) (Proxy :: Proxy (E e)) letBSem
+  letb = UE.liftSOnGen @(E e) @(E e) (UE.ol0 :. UE.DimNested (UE.K UE.E):. UE.ENil) (Proxy :: Proxy (E e)) letBSem
     where
       letBSem :: E e env (B a) -> (U u env a -> E e env b) -> E e env b
       letBSem (E e) f = E (letb' e $ \u -> let E res = f (U u) in res)
@@ -157,7 +158,7 @@ instance Box' (UE.EnvI WrapL) where
 
 instance HModalL' (UE.EnvI Ix) (UE.EnvI WrapL) where
   mvar' = UE.liftFO1' $ \ix -> WrapL $ MVar ix
-  letb' = UE.liftSOn' (UE.ol0 :. UE.ol1 :. ENil) Proxy $ \(WrapL e1) (WrapL e2) -> WrapL $ LetB e1 e2
+  letb' = UE.liftSOn' @Ix @WrapL (UE.ol0 :. UE.ol1 :. ENil) Proxy $ \(WrapL e1) (WrapL e2) -> WrapL $ LetB e1 e2
 
 convert :: forall a. (forall e u. (STLC e, HModalL u e) => e a) -> ModalL '[] '[] a
 convert h =

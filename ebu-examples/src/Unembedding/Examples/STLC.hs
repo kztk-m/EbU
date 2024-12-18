@@ -20,6 +20,7 @@ to unembed a language.
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Unembedding.Examples.STLC where
 
@@ -102,7 +103,7 @@ class STLChoas exp where
 
 instance STLChoas (EnvI STLC) where
   app = UE.liftFO2 appSem -- not a binder => FO, 2 args => FO2
-  lam = UE.liftSOn (ol1 :. ENil) lamSem -- binder => SO
+  lam = UE.liftSOn @STLC (ol1 :. ENil) lamSem -- binder => SO
 
 -- Now you can interpret open expressions if you want
 -- -----------------------------------------------------------------------------

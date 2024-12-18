@@ -147,10 +147,10 @@ instance LiftVariables Ast where
 data P (f :: T ~> T) (r :: T) where
   MkP :: forall f a. Proxy a -> P f (f @@ a)
 instance L (UE.EnvI Ast) where
-  lam = UE.liftSOn (ol1 :. ENil) Lam
+  lam = UE.liftSOn @Ast (ol1 :. ENil) Lam
 
   app = UE.liftFO2 App
-  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) Let
+  let_ = UE.liftSOn @Ast (ol0 :. ol1 :. ENil) Let
 
   inst a p = UE.liftFO1 (flip Inst p) a
 
@@ -200,10 +200,10 @@ instance Variables Sem where
 instance LiftVariables Sem
 
 instance L (UE.EnvI Sem) where
- lam = UE.liftSOn (ol1 :. ENil) lamSem
+ lam = UE.liftSOn @Sem (ol1 :. ENil) lamSem
 
  app = UE.liftFO2 appSem
- let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
+ let_ = UE.liftSOn @Sem (ol0 :. ol1 :. ENil) letSem
 
  inst a p = UE.liftFO1 (flip instSem p) a
 

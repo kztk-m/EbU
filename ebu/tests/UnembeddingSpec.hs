@@ -62,12 +62,14 @@ instance LiftVariables STLC where
   liftVar = Var
 
 instance HSTLC (EnvI STLC) where
-  lam = liftSOn (ol1 :. ENil) Lam
+  -- I don't know why but in GHC 9.10.1 @STLC is crucial for the typechecker to terminate.
+  lam = liftSOn @STLC (ol1 :. ENil) Lam
   app = liftFO2 App
 
 instance HSTLCS (EnvI STLC) (EnvI STLCS) where
   ret = liftFO1' Ret
-  let_ = liftSOn' (ol0 :. ol1 :. ENil) (Proxy @STLC) Let
+  -- I don't know why but in GHC 9.10.1 the @STLC @STLCS parts are crucial for the typechecker to terminate.
+  let_ = liftSOn' @STLC @STLCS (ol0 :. ol1 :. ENil) Proxy Let
   put s = liftFO0' (Put s)
 
 

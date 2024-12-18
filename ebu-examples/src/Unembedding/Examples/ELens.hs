@@ -309,7 +309,7 @@ unpairLensT' =
 unpairLensT :: LensT s (a, b) -> LensT (a ': b ': s) r -> LensT s r
 unpairLensT e1 e2 = shareViewLensT e1 (unpairLensT' e2)
 instance UnPair () (,) (EnvI LensT) where
-  unpair = UE.liftSOn (UE.ol0 :. UE.ol2 :. ENil) unpairLensT
+  unpair = UE.liftSOn @LensT (UE.ol0 :. UE.ol2 :. ENil) unpairLensT
 
 data Sums as where
   InHead :: a       -> Sums (a ': as)

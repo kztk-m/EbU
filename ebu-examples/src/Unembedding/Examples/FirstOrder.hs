@@ -14,6 +14,7 @@ Embedding of a simple first-order language with the fix-point operator.
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
@@ -76,9 +77,9 @@ instance UE.Weakenable e => UE.Weakenable (E e) where
   weaken (E x) = E (UE.weaken x)
 
 instance (HFOLang' e, UE.Weakenable e) => HFOLang (UE.EnvI UE.Ix) (UE.EnvI (E e)) where
-  lam = UE.liftSOn' (UE.ol1 :. ENil) Proxy $ \(E e) -> E (lam' e)
+  lam = UE.liftSOn' @UE.Ix @(E e) (UE.ol1 :. ENil) Proxy $ \(E e) -> E (lam' e)
   app = UE.liftFO2 $ \(E e1) (E e2) -> E (app' e1 e2)
-  fix = UE.liftSOnGen (UE.DimNested (UE.K UE.E) :. ENil) (Proxy :: Proxy UE.Ix) $ \f -> E $ fix' (unE . f . E)
+  fix = UE.liftSOnGen @UE.Ix @(E e) (UE.DimNested (UE.K UE.E) :. ENil) (Proxy :: Proxy UE.Ix) $ \f -> E $ fix' (unE . f . E)
   var = UE.liftFO1' $ E . var'
 
 -- type family Fst (a :: (k , k')) :: k where

@@ -18,6 +18,7 @@ transfer style iteration on the incremental lambda calculus.
 {-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE TypeApplications           #-}
 
 module Unembedding.Examples.CTS where
 
@@ -204,7 +205,7 @@ instance CTSBase (EnvI CTS) where
   pair = UE.liftFO2 pairSem
   fst_ = UE.liftFO1 fstSem
   snd_ = UE.liftFO1 sndSem
-  let_ = UE.liftSOn (ol0 :. ol1 :. ENil) letSem
+  let_ = UE.liftSOn @CTS (ol0 :. ol1 :. ENil) letSem
 
 -- The language is now extended to support Sequences
 -- To do this, we have the diff infrastructure for sequences, then another type
@@ -405,8 +406,8 @@ instance CTSSeq (EnvI CTS) where
   empty     = UE.liftFO0 emptySem
   singleton = UE.liftFO1 singletonSem
   concat    = UE.liftFO1 concatSem
-  map       = UE.liftSOn (ol1 :. ol0 :. ENil) mapSem
-  concatMap = UE.liftSOn (ol1 :. ol0 :. ENil) (\f x -> concatSem $ mapSem f x )
+  map       = UE.liftSOn @CTS (ol1 :. ol0 :. ENil) mapSem
+  concatMap = UE.liftSOn @CTS (ol1 :. ol0 :. ENil) (\f x -> concatSem $ mapSem f x )
 
 -- Now armed with the features for a more interesting example, we interpret open
 -- expressions using UE.runOpen
