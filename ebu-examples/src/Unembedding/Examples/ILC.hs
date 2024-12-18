@@ -32,7 +32,7 @@ import qualified Data.Sequence            as S
 
 -- unembedding tooling
 import qualified Unembedding              as UE
-import           Unembedding              (Dim (..), EnvI (..), LiftVariables,
+import           Unembedding              (EnvI (..), LiftVariables,
                                            Variables (..), Weakenable, ol0, ol1)
 import           Unembedding.Env
 

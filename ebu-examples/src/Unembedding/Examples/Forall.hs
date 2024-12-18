@@ -30,13 +30,14 @@ construct corresponds to the left-to-right conversion.
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use section" #-}
 {-# LANGUAGE InstanceSigs              #-}
+{-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
 module Unembedding.Examples.Forall where
 import           Data.Kind       (Type)
 import           Data.Proxy      (Proxy (Proxy))
 import qualified Unembedding     as UE
-import           Unembedding     (Dim (..), LiftVariables (..), Variables,
-                                  Weakenable, ol0, ol1)
+import           Unembedding     (LiftVariables (..), Variables, Weakenable,
+                                  ol0, ol1)
 import qualified Unembedding.Env as UE
 
 import           DeFun.Core      (App, type (@@), type (~>))
@@ -117,6 +118,7 @@ instance L (UE.EnvI Ast) where
   -- Little awkward
   gen :: forall f. (forall (a :: T). Proxy a -> UE.EnvI Ast (f @@ a)) -> UE.EnvI Ast (Forall f)
   gen e = UE.liftFOF (\arg -> Gen (arg . MkP @f)) (\(MkP p) -> e p)
+
 
 
 toAst :: (forall e. L e => e a) -> Ast '[] a

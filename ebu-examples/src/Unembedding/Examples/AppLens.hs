@@ -36,8 +36,7 @@ import           Prelude         hiding (LT)
 
 -- unembedding tooling
 import qualified Unembedding     as UE
-import           Unembedding     (Dim (..), EnvI (..), TEnv, Variables (..),
-                                  ol0)
+import           Unembedding     (Dim, EnvI (..), TEnv, Variables (..), ol0)
 import           Unembedding.Env
 
 -- Step 1: Identity semantic domain

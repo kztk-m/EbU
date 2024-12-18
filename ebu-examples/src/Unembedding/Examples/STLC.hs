@@ -34,9 +34,9 @@ import qualified Data.Sequence         as S
 
 -- unembedding tooling
 import qualified Unembedding           as UE
-import           Unembedding           (Dim (..), EnvI (..), LiftVariables,
-                                        TEnv, Variables (..), Weakenable, ol0,
-                                        ol1, runOpen)
+import           Unembedding           (EnvI (..), LiftVariables, TEnv,
+                                        Variables (..), Weakenable, ol0, ol1,
+                                        runOpen)
 import           Unembedding.Env
 
 -- Unembedding recipe:

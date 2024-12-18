@@ -38,11 +38,10 @@ import           Data.Kind              (Type)
 import           Data.Proxy             (Proxy (Proxy))
 import           Prelude                hiding (LT, id, (.))
 import qualified Unembedding            as UE
-import           Unembedding            (Dim (..), EnvI (..), LiftVariables,
-                                         OfLength (..), Repeat, SNat (..),
-                                         Sig2 (..), TEnv, TermRep (..),
-                                         URep (..), Variables (..), Vec (..),
-                                         Weakenable)
+import           Unembedding            (EnvI (..), LiftVariables, Repeat,
+                                         SNat (..), Sig2 (..), TEnv,
+                                         TermRep (..), URep (..),
+                                         Variables (..), Vec (..), Weakenable)
 import           Unembedding.Env
 
 type Err = Either String
