@@ -45,11 +45,11 @@ jobs:
 #          ${{ runner.os }}-build-
 #          ${{ runner.os }}-
 
-    - name: Set up GHC ${{ matrix.ghc-version }}
+    - name: Set up GHC ${{ matrix.ghc }}
       uses: haskell-actions/setup@v2
       id: setup
       with:
-        ghc-version: ${{ matrix.ghc-version }}
+        ghc-version: ${{ matrix.ghc }}
         # Defaults, added for clarity:
         cabal-version: 'latest'
         cabal-update: true
