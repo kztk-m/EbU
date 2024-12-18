@@ -48,13 +48,13 @@ pattern ENil <- MkEnv _ ENil_
   where
     ENil = MkEnv 0 ENil_
 
-pattern ECons :: () => (as ~ a1 : as1) => f a1 -> Env f as1 -> Env f as
+pattern ECons :: () => (as ~ (a1 : as1)) => f a1 -> Env f as1 -> Env f as
 pattern ECons e es <- MkEnv n (ECons_ e (MkEnv (n-1) -> es))
   where
     ECons e es = MkEnv (lenEnv es + 1) (ECons_ e (getEnvBody es))
 
 -- | infix version of 'ECons'
-pattern (:.) :: () => (as ~ a1 : as1) => f a1 -> Env f as1 -> Env f as
+pattern (:.) :: () => (as ~ (a1 : as1)) => f a1 -> Env f as1 -> Env f as
 pattern e :. es = ECons e es
 
 infixr 4 :.
