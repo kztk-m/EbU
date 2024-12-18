@@ -74,10 +74,10 @@ instance HSTLCS (EnvI STLC) (EnvI STLCS) where
 
 
 fromHOAS :: (forall f. HSTLC f => f a) -> STLC '[] a
-fromHOAS = runClose
+fromHOAS h = runClose h
 
 fromHOASS :: (forall f s. HSTLCS f s => s a) -> STLCS '[] a
-fromHOASS = runClose'
+fromHOASS h = runClose' h
 
 
 sHOAS :: HSTLC f => f ((a -> b -> c) -> (a -> b) -> a -> c)

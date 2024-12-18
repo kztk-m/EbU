@@ -161,7 +161,7 @@ instance L (UE.EnvI Ast) where
 
 
 toAst :: (forall e. L e => e a) -> Ast '[] a
-toAst = UE.runClose
+toAst h = UE.runClose h
 
 data S a where
   SO :: Int -> S O
