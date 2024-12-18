@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               embedding-by-unembedding
-version:            0.7.0
+version:            0.8.0
 synopsis:           Embedding by unembedding
 license:            BSD-3-Clause
 author:             Kazutaka Matsuda, Samantha Frohlich 
