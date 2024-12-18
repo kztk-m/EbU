@@ -1,3 +1,1 @@
 packages: */*.cabal
-
-allow-newer: defun-core-0.1:base
