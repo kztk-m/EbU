@@ -63,6 +63,7 @@ infixr 4 :.
 #if __GLASGOW_HASKELL__ >= 902
 {-# INLINABLE ENil #-}
 {-# INLINABLE ECons #-}
+{-# INLINABLE (:.) #-}
 #endif
 
 {-# COMPLETE ENil, ECons #-}
