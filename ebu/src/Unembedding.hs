@@ -291,7 +291,7 @@ liftSO f ks = EnvI $ \e -> f (mapEnv (conv e) ks)
 
 data OfLength as where
   LZ :: OfLength '[]
-  LS :: OfLength as -> OfLength (a ': as)
+  LS :: !(OfLength as) -> OfLength (a ': as)
 
 -- | Class to reuse 'ol1', ..., 'ol4' for 'liftSOn', 'liftSOn'', and 'liftSOnGen'.
 class LiftOfLength f as t | t -> as where
@@ -337,7 +337,7 @@ type family FuncTerm (sem :: [k] -> k -> Type) (env :: [k])
 -- infixr 4 :.
 
 data DimSimple (s :: Sig2 k) where
-  DimSimple :: OfLength as -> DimSimple (as ':~> a)
+  DimSimple :: !(OfLength as) -> DimSimple (as ':~> a)
 
 instance t ~ (as ':~> a) => LiftOfLength DimSimple as t where
   liftOfLength = DimSimple
@@ -480,7 +480,7 @@ toFuncH' (DimMult n :. ns) f = \k -> toFuncH' ns (f . ECons (toHRep' n k))
 -- infixr 4 ::.
 
 data DimMult (s :: SemSig k) where
-  DimMult :: OfLength as -> DimMult (MkSemSig sem as a)
+  DimMult :: !(OfLength as) -> DimMult (MkSemSig sem as a)
 
 instance t ~ MkSemSig sem as a => LiftOfLength DimMult as t where
   liftOfLength = DimMult
@@ -655,9 +655,9 @@ liftSOGen f ks = EnvI $ \shEnv -> f (mapEnv (convertHtoSemGen shEnv) ks)
 data BDesc (as :: [k]) (bs :: [KBindSpec k]) where
   E :: BDesc '[] '[]
   -- | stands for the corresponding binding is to be kept (for further processing afterwards).
-  K :: Weakenable sem => BDesc as bs -> BDesc as (MkKBindSpec sem b : bs)
+  K :: Weakenable sem => !(BDesc as bs) -> BDesc as (MkKBindSpec sem b : bs)
   -- | stands for the corresponding binding is to be unembedded.
-  U :: BDesc as bs -> BDesc (a : as) bs
+  U :: !(BDesc as bs) -> BDesc (a : as) bs
 
 descToTEnv :: BDesc as bs -> TEnv as
 descToTEnv E     = ENil
@@ -678,7 +678,7 @@ toHRepGen :: BDesc as bs -> Func (EnvI semExp) as (BsFunc bs semR r) -> HRepGen 
 toHRepGen d f = HRGen (descToTEnv d) (fromBsFunc d . fromFunc f)
 
 data DimNested (s :: ArgSpec k) where
-  DimNested :: BDesc as bs -> DimNested (MkArgSpec sem (MkBindSpec as bs) a)
+  DimNested :: !(BDesc as bs) -> DimNested (MkArgSpec sem (MkBindSpec as bs) a)
 
 instance t ~ MkArgSpec sem (MkBindSpec as '[]) a => LiftOfLength DimNested as t where
   liftOfLength = DimNested . go
