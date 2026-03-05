@@ -107,12 +107,12 @@ viewIx (MkIx n)
   | n == 0 = unsafeCoerce IxZ'
   | otherwise = unsafeCoerce IxS' (MkIx (n - 1))
 
-pattern IxZ :: () => (as ~ a : as1) => Ix as a
+pattern IxZ :: () => (as ~ (a : as1)) => Ix as a
 pattern IxZ <- (viewIx -> IxZ')
   where
     IxZ = MkIx 0
 
-pattern IxS :: () => (as ~ a1 : as1) => Ix as1 a -> Ix as a
+pattern IxS :: () => (as ~ (a1 : as1)) => Ix as1 a -> Ix as a
 pattern IxS n <- (viewIx -> IxS' n)
   where
     IxS (MkIx n) = MkIx (n + 1)
